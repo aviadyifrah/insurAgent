@@ -7,47 +7,36 @@ import { SignaturePad } from "./SignaturePad";
 interface Props {
   task: Task;
   view: ClaimView;
-  onUpdate: (v: ClaimView) => void;
-  setBusy: (b: boolean) => void;
+  /** Runs a request while showing the agent as busy; results arrive through the live view. */
+  act: (fn: () => Promise<unknown>) => Promise<void>;
 }
 
 const ICON: Record<Task["type"], string> = { upload: "📷", sign: "✍️", send_email: "📧", action: "✔️" };
 
-export function TaskCard({ task, view, onUpdate, setBusy }: Props) {
+export function TaskCard({ task, view, act }: Props) {
   const [open, setOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const email = view.emails.find((e) => e.id === task.email_draft_id);
+  const claimId = view.claim.id;
 
-  async function act(fn: () => Promise<ClaimView>) {
-    setBusy(true);
-    try {
-      onUpdate(await fn());
-      setOpen(false);
-    } catch {
-      alert("משהו השתבש. נסה שוב.");
-    } finally {
-      setBusy(false);
-    }
+  function run(fn: () => Promise<unknown>) {
+    setOpen(false);
+    return act(fn);
   }
 
-  async function uploadAndComplete(files: FileList | null) {
+  function uploadAndComplete(files: FileList | null) {
     if (!files?.length) return;
-    setBusy(true);
-    try {
-      const docs = await Promise.all([...files].map((f) => api.upload(f, view.claim.id)));
-      onUpdate(await api.completeTask(task.id, docs.map((d) => d.id)));
-    } catch {
-      alert("ההעלאה נכשלה. נסה שוב.");
-    } finally {
-      setBusy(false);
-    }
+    return act(async () => {
+      const docs = await Promise.all([...files].map((f) => api.upload(f, claimId)));
+      await api.completeTask(claimId, task.id, docs.map((d) => d.id));
+    });
   }
 
   const primary = {
     upload: { label: "צלם / העלה", run: () => fileInput.current?.click() },
     sign: { label: "חתום", run: () => setOpen(true) },
     send_email: { label: "פתח מייל", run: () => setOpen(true) },
-    action: { label: "סיימתי", run: () => act(() => api.completeTask(task.id)) },
+    action: { label: "סיימתי", run: () => run(() => api.completeTask(claimId, task.id)) },
   }[task.type];
 
   return (
@@ -70,10 +59,15 @@ export function TaskCard({ task, view, onUpdate, setBusy }: Props) {
       </div>
 
       {open && task.type === "sign" && (
-        <SignModal view={view} onClose={() => setOpen(false)} onSign={(png) => act(() => api.sign(task.id, png))} />
+        <SignModal view={view} onClose={() => setOpen(false)} onSign={(png) => run(() => api.sign(claimId, task.id, png))} />
       )}
       {open && task.type === "send_email" && email && (
-        <EmailModal email={email} documents={view.documents} onClose={() => setOpen(false)} onSent={() => act(() => api.emailSent(email.id))} />
+        <EmailModal
+          email={email}
+          documents={view.documents}
+          onClose={() => setOpen(false)}
+          onSent={() => run(() => api.emailSent(claimId, email.id))}
+        />
       )}
     </div>
   );

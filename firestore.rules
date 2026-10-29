@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Clients only read their own data (live updates in the app). Every write goes through the
+// server, which uses the Admin SDK and is not subject to these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(data) {
+      return request.auth != null && data.user_id == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /claims/{claimId} {
+      allow read: if isOwner(resource.data);
+
+      // Raw model turns stay server-side.
+      match /turns/{turnId} {
+        allow read: if false;
+      }
+      match /{sub}/{docId} {
+        allow read: if sub != "turns" && isOwner(resource.data);
+      }
+    }
+
+    match /documents/{docId} {
+      allow read: if isOwner(resource.data);
+    }
+  }
+}

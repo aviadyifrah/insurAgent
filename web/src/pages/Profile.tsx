@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { signOut } from "firebase/auth";
 import { api } from "../api";
+import { auth } from "../firebase";
 import { navigate } from "../App";
 import { Disclaimer } from "../components/Disclaimer";
 import type { User } from "../types";
@@ -11,7 +13,7 @@ const FIELDS: { key: keyof User; label: string; ltr?: boolean }[] = [
   { key: "bank_details", label: "חשבון בנק להחזרים (בנק, סניף, חשבון)" },
 ];
 
-export function Profile({ user, onChange, onLogout }: { user: User; onChange: (u: User) => void; onLogout: () => void }) {
+export function Profile({ user, onChange }: { user: User; onChange: (u: User) => void }) {
   const [form, setForm] = useState(user);
   const [saved, setSaved] = useState(false);
 
@@ -60,8 +62,7 @@ export function Profile({ user, onChange, onLogout }: { user: User; onChange: (u
       <button
         className="link"
         onClick={async () => {
-          await api.logout();
-          onLogout();
+          await signOut(auth);
         }}
       >
         התנתקות

@@ -3,10 +3,10 @@ import { api } from "../api";
 import type { DocumentRow } from "../types";
 
 interface Props {
-  claimId?: number;
+  claimId?: string;
   placeholder: string;
   busy: boolean;
-  onSend: (text: string, documentIds: number[]) => Promise<void>;
+  onSend: (text: string, documentIds: string[]) => Promise<void>;
 }
 
 /** Message box with attachments; files upload as soon as they're picked. */

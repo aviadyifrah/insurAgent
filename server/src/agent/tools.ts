@@ -1,8 +1,27 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { all, get, run, update, type Claim, type DocumentRow, type Requirement, type Task, type User } from "../db";
-import { claimDocuments, closeTask, createTask, touchClaim } from "../claims";
+import { closeTask, createTask } from "../claims";
 import { findTemplate, templateById, templates } from "../knowledge";
+import {
+  add,
+  child,
+  claimDocuments,
+  documents,
+  getClaim,
+  getDoc,
+  getUser,
+  list,
+  requirementsOf,
+  updateClaim,
+  users,
+  now,
+  type Claim,
+  type DocumentRow,
+  type EmailDraft,
+  type Requirement,
+  type Task,
+  type User,
+} from "../store";
 
 export interface ToolContext {
   claim: Claim;
@@ -20,15 +39,17 @@ const tool = <S extends z.ZodObject>(t: AgentTool<S>) => t;
 
 const ok = (extra: Record<string, unknown> = {}) => ({ ok: true, ...extra });
 
-function requirementOf(ctx: ToolContext, id: number): Requirement {
-  const r = get<Requirement>("SELECT * FROM requirements WHERE id = ? AND claim_id = ?", id, ctx.claim.id);
-  if (!r) throw new Error(`requirement ${id} not found in this claim`);
+const id = z.string().min(1);
+
+async function requirementOf(ctx: ToolContext, requirementId: string): Promise<Requirement> {
+  const r = await getDoc<Requirement>(child(ctx.claim.id, "requirements").doc(requirementId));
+  if (!r) throw new Error(`requirement ${requirementId} not found in this claim`);
   return r;
 }
 
-function documentOf(ctx: ToolContext, id: number): DocumentRow {
-  const d = claimDocuments(ctx.claim).find((doc) => doc.id === id);
-  if (!d) throw new Error(`document ${id} is not available to this claim`);
+async function documentOf(ctx: ToolContext, documentId: string): Promise<DocumentRow> {
+  const d = (await claimDocuments(ctx.claim)).find((doc) => doc.id === documentId);
+  if (!d) throw new Error(`document ${documentId} is not available to this claim`);
   return d;
 }
 
@@ -49,8 +70,8 @@ const tools = [
       claim_type: z.string().optional().describe("dental | optics | paramedical | consultation | other"),
       amount: z.number().optional().describe("Amount paid in ILS"),
     }),
-    run: (input, ctx) => {
-      update("claims", ctx.claim.id, { ...input, updated_at: new Date().toISOString() });
+    run: async (input, ctx) => {
+      await updateClaim(ctx.claim.id, input);
       return ok();
     },
   }),
@@ -64,9 +85,8 @@ const tools = [
       claim_type: z.string().optional(),
       template_id: z.string().optional().describe("Load a template by id instead, e.g. 'generic-health'"),
     }),
-    run: (input, ctx) => {
-      const existing = all<Requirement>("SELECT * FROM requirements WHERE claim_id = ?", ctx.claim.id);
-      if (existing.length > 0) return { ok: false, error: "requirements already loaded for this claim" };
+    run: async (input, ctx) => {
+      if ((await requirementsOf(ctx.claim.id)).length > 0) return { ok: false, error: "requirements already loaded for this claim" };
       const tpl = input.template_id
         ? templateById(input.template_id)
         : input.insurer_key && input.claim_type
@@ -79,24 +99,36 @@ const tools = [
           available: templates.map((t) => ({ id: t.id, insurer_key: t.insurer_key, claim_type: t.claim_type })),
         };
       }
+      const batch = child(ctx.claim.id, "requirements").firestore.batch();
       tpl.requirements.forEach((r, i) =>
-        run(
-          "INSERT INTO requirements (claim_id, key, title, description, required, needs_signature, sort) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          ctx.claim.id,
-          r.key,
-          r.title,
-          r.description,
-          r.required === false ? 0 : 1,
-          r.needs_signature ? 1 : 0,
-          i,
-        ),
+        batch.create(child(ctx.claim.id, "requirements").doc(), {
+          user_id: ctx.claim.user_id,
+          claim_id: ctx.claim.id,
+          key: r.key,
+          title: r.title,
+          description: r.description,
+          required: r.required !== false,
+          needs_signature: !!r.needs_signature,
+          status: "missing",
+          document_id: null,
+          note: null,
+          sort: i,
+        } satisfies Omit<Requirement, "id">),
       );
-      update("claims", ctx.claim.id, { template_id: tpl.id });
+      await batch.commit();
+      await updateClaim(ctx.claim.id, { template_id: tpl.id });
       return ok({
         template: tpl.id,
         verified: tpl.verified,
         submission: tpl.submission,
-        requirements: all<Requirement>("SELECT id, key, title, description, required, needs_signature FROM requirements WHERE claim_id = ?", ctx.claim.id),
+        requirements: (await requirementsOf(ctx.claim.id)).map(({ id, key, title, description, required, needs_signature }) => ({
+          id,
+          key,
+          title,
+          description,
+          required,
+          needs_signature,
+        })),
       });
     },
   }),
@@ -110,16 +142,21 @@ const tools = [
       required: z.boolean().default(true),
       needs_signature: z.boolean().default(false),
     }),
-    run: (input, ctx) => {
-      const id = run(
-        "INSERT INTO requirements (claim_id, title, description, required, needs_signature, sort) VALUES (?, ?, ?, ?, ?, 100)",
-        ctx.claim.id,
-        input.title,
-        input.description,
-        input.required ? 1 : 0,
-        input.needs_signature ? 1 : 0,
-      );
-      return ok({ requirement_id: id });
+    run: async (input, ctx) => {
+      const r = await add<Requirement>(child(ctx.claim.id, "requirements"), {
+        user_id: ctx.claim.user_id,
+        claim_id: ctx.claim.id,
+        key: null,
+        title: input.title,
+        description: input.description,
+        required: input.required,
+        needs_signature: input.needs_signature,
+        status: "missing",
+        document_id: null,
+        note: null,
+        sort: 100,
+      });
+      return ok({ requirement_id: r.id });
     },
   }),
 
@@ -128,26 +165,27 @@ const tools = [
     description:
       "Update a requirement's status. Attach a document when you have verified it satisfies the requirement (status 'done'). Use 'not_needed' for optional items that don't apply. Use 'pending_third_party' when waiting on the clinic.",
     schema: z.object({
-      requirement_id: z.number().int(),
+      requirement_id: id,
       status: z.enum(["missing", "pending_user", "pending_third_party", "done", "not_needed"]),
-      document_id: z.number().int().optional(),
+      document_id: id.optional(),
       note: z.string().optional().describe("Short Hebrew note shown to the user, e.g. why it is not needed"),
     }),
-    run: (input, ctx) => {
-      requirementOf(ctx, input.requirement_id);
-      if (input.document_id) documentOf(ctx, input.document_id);
-      update("requirements", input.requirement_id, {
+    run: async (input, ctx) => {
+      await requirementOf(ctx, input.requirement_id);
+      if (input.document_id) await documentOf(ctx, input.document_id);
+      await child(ctx.claim.id, "requirements").doc(input.requirement_id).update({
         status: input.status,
         document_id: input.document_id,
         note: input.note,
       });
       // A satisfied requirement no longer needs the user's open task.
       if (input.status === "done" || input.status === "not_needed") {
-        for (const t of all<Task>("SELECT * FROM tasks WHERE requirement_id = ? AND status = 'open'", input.requirement_id)) {
-          closeTask(t.id, "done");
-        }
+        const open = await list<Task>(
+          child(ctx.claim.id, "tasks").where("requirement_id", "==", input.requirement_id).where("status", "==", "open"),
+        );
+        await Promise.all(open.map((t) => closeTask(ctx.claim.id, t.id, "done")));
       }
-      touchClaim(ctx.claim.id);
+      await updateClaim(ctx.claim.id, {});
       return ok();
     },
   }),
@@ -157,13 +195,13 @@ const tools = [
     description:
       "Classify a document after you have looked at it. Mark identity / bank documents reusable so future claims reuse them without asking again.",
     schema: z.object({
-      document_id: z.number().int(),
+      document_id: id,
       kind: z.string().describe("receipt | treatment_details | id_copy | bank_confirmation | xray | medical_document | other"),
       reusable: z.boolean().default(false),
     }),
-    run: (input, ctx) => {
-      documentOf(ctx, input.document_id);
-      update("documents", input.document_id, { kind: input.kind, reusable: input.reusable ? 1 : 0 });
+    run: async (input, ctx) => {
+      await documentOf(ctx, input.document_id);
+      await documents.doc(input.document_id).update({ kind: input.kind, reusable: input.reusable });
       return ok();
     },
   }),
@@ -172,8 +210,8 @@ const tools = [
     name: "get_user_profile",
     description: "Read the user's saved personal details (needed for the claim form).",
     schema: z.object({}),
-    run: (_input, ctx) => {
-      const u = get<User>("SELECT * FROM users WHERE id = ?", ctx.user.id)!;
+    run: async (_input, ctx) => {
+      const u = (await getUser(ctx.user.id))!;
       return { full_name: u.full_name, id_number: u.id_number, phone: u.phone, email: u.email, bank_details: u.bank_details };
     },
   }),
@@ -187,24 +225,10 @@ const tools = [
       phone: z.string().optional(),
       bank_details: z.string().optional().describe("Bank, branch and account number as one string"),
     }),
-    run: (input, ctx) => {
-      update("users", ctx.user.id, input);
+    run: async (input, ctx) => {
+      await users.doc(ctx.user.id).update(input);
       return ok();
     },
-  }),
-
-  tool({
-    name: "search_email",
-    description:
-      "Search the user's mailbox for documents (e.g. a receipt emailed by the clinic). Returns matching messages with attachments.",
-    schema: z.object({
-      query: z.string().describe("Gmail-style query, e.g. 'from:smile receipt after:2026/09/01'"),
-    }),
-    // Mailbox integration (Gmail OAuth, read-only) is not wired up yet.
-    run: () => ({
-      connected: false,
-      message: "The user's mailbox is not connected yet. Ask the user to upload the document or create a task.",
-    }),
   }),
 
   tool({
@@ -215,12 +239,11 @@ const tools = [
       type: z.enum(["upload", "sign", "action"]),
       title: z.string().describe("Short Hebrew title, e.g. 'צלם את תעודת הזהות'"),
       instructions: z.string().describe("1-3 short Hebrew sentences: exactly what to do"),
-      requirement_id: z.number().int().optional(),
+      requirement_id: id.optional(),
     }),
-    run: (input, ctx) => {
-      if (input.requirement_id) requirementOf(ctx, input.requirement_id);
-      const task = createTask({
-        claimId: ctx.claim.id,
+    run: async (input, ctx) => {
+      if (input.requirement_id) await requirementOf(ctx, input.requirement_id);
+      const task = await createTask(ctx.claim, {
         type: input.type,
         title: input.title,
         instructions: input.instructions,
@@ -233,11 +256,11 @@ const tools = [
   tool({
     name: "cancel_task",
     description: "Cancel an open task that is no longer relevant.",
-    schema: z.object({ task_id: z.number().int(), reason: z.string() }),
-    run: (input, ctx) => {
-      const t = get<Task>("SELECT * FROM tasks WHERE id = ? AND claim_id = ?", input.task_id, ctx.claim.id);
+    schema: z.object({ task_id: id, reason: z.string() }),
+    run: async (input, ctx) => {
+      const t = await getDoc<Task>(child(ctx.claim.id, "tasks").doc(input.task_id));
       if (!t) throw new Error(`task ${input.task_id} not found`);
-      closeTask(t.id, "cancelled");
+      await closeTask(ctx.claim.id, t.id, "cancelled");
       return ok();
     },
   }),
@@ -251,38 +274,41 @@ const tools = [
       to: z.string().optional(),
       subject: z.string(),
       body: z.string(),
-      attachment_document_ids: z.array(z.number().int()).default([]),
+      attachment_document_ids: z.array(id).default([]),
       requirement_ids: z
-        .array(z.number().int())
+        .array(id)
         .default([])
         .describe("Requirements this email will obtain; they are marked pending_third_party once the user sends it"),
       create_send_task: z.boolean().default(true),
     }),
-    run: (input, ctx) => {
-      input.attachment_document_ids.forEach((id) => documentOf(ctx, id));
-      input.requirement_ids.forEach((id) => requirementOf(ctx, id));
-      const draftId = run(
-        "INSERT INTO email_drafts (claim_id, purpose, to_address, subject, body, attachment_ids) VALUES (?, ?, ?, ?, ?, ?)",
-        ctx.claim.id,
-        input.purpose,
-        input.to ?? null,
-        input.subject,
-        input.body,
-        JSON.stringify(input.attachment_document_ids),
-      );
-      let taskId: number | undefined;
+    run: async (input, ctx) => {
+      await Promise.all(input.attachment_document_ids.map((d) => documentOf(ctx, d)));
+      await Promise.all(input.requirement_ids.map((r) => requirementOf(ctx, r)));
+      const draft = await add<EmailDraft>(child(ctx.claim.id, "emails"), {
+        user_id: ctx.claim.user_id,
+        claim_id: ctx.claim.id,
+        purpose: input.purpose,
+        to_address: input.to ?? null,
+        subject: input.subject,
+        body: input.body,
+        attachment_ids: input.attachment_document_ids,
+        status: "draft",
+        created_at: now(),
+      });
+      let taskId: string | undefined;
       if (input.create_send_task) {
         const title = input.purpose === "submit_claim" ? "שלח את התביעה" : `שלח מייל: ${input.subject}`;
-        taskId = createTask({
-          claimId: ctx.claim.id,
-          type: "send_email",
-          title,
-          instructions: "המייל מוכן. פתח אותו, בדוק ולחץ שלח מהמייל שלך.",
-          emailDraftId: draftId,
-          requirementId: input.requirement_ids.length === 1 ? input.requirement_ids[0] : null,
-        }).id;
+        taskId = (
+          await createTask(ctx.claim, {
+            type: "send_email",
+            title,
+            instructions: "המייל מוכן. פתח אותו, בדוק ולחץ שלח מהמייל שלך.",
+            emailDraftId: draft.id,
+            requirementId: input.requirement_ids.length === 1 ? input.requirement_ids[0] : null,
+          })
+        ).id;
       }
-      return ok({ email_draft_id: draftId, task_id: taskId });
+      return ok({ email_draft_id: draft.id, task_id: taskId });
     },
   }),
 
@@ -291,12 +317,12 @@ const tools = [
     description:
       "Mark the claim ready once every required requirement is 'done' or 'not_needed'. The app then lets the user download the submission PDF (signed claim form + all attached documents), built on their device. Returns what is still missing otherwise.",
     schema: z.object({}),
-    run: (_input, ctx) => {
-      const reqs = all<Requirement>("SELECT * FROM requirements WHERE claim_id = ?", ctx.claim.id);
+    run: async (_input, ctx) => {
+      const reqs = await requirementsOf(ctx.claim.id);
       if (reqs.length === 0) return { ok: false, error: "no requirements loaded" };
       const missing = reqs.filter((r) => r.required && r.status !== "done" && r.status !== "not_needed");
       if (missing.length > 0) return { ok: false, missing: missing.map((r) => ({ id: r.id, title: r.title, status: r.status })) };
-      update("claims", ctx.claim.id, { status: "ready", updated_at: new Date().toISOString() });
+      await updateClaim(ctx.claim.id, { status: "ready" });
       const tpl = ctx.claim.template_id ? templateById(ctx.claim.template_id) : undefined;
       return ok({ submission: tpl?.submission ?? null });
     },
@@ -319,7 +345,7 @@ export async function executeTool(name: string, input: unknown, ctx: ToolContext
   if (!parsed.success) return { content: `invalid input: ${parsed.error.message}`, isError: true };
   try {
     // Each tool sees the claim as it is now, not as it was when the turn started.
-    const claim = get<Claim>("SELECT * FROM claims WHERE id = ?", ctx.claim.id)!;
+    const claim = (await getClaim(ctx.claim.id))!;
     const result = await (t.run as (i: unknown, c: ToolContext) => unknown)(parsed.data, { ...ctx, claim });
     return { content: JSON.stringify(result), isError: false };
   } catch (err) {

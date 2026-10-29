@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, pendingFirstMessage } from "../api";
 import { navigate } from "../App";
+import { useClaimLive } from "../useClaimLive";
 import { Composer } from "../components/Composer";
 import { Disclaimer } from "../components/Disclaimer";
 import { DocLink } from "../components/DocLink";
 import { EmailModal, TaskCard } from "../components/TaskCard";
 import { downloadClaimPackage } from "../claimPackage";
-import type { ClaimView, EmailDraft, Requirement } from "../types";
+import type { EmailDraft, Requirement, User } from "../types";
 import { Progress } from "./Home";
 
 const REQ_STATUS: Record<Requirement["status"], { icon: string; label: string }> = {
@@ -17,16 +18,42 @@ const REQ_STATUS: Record<Requirement["status"], { icon: string; label: string }>
   not_needed: { icon: "➖", label: "לא נדרש" },
 };
 
-export function ClaimPage({ claimId }: { claimId: number }) {
-  const [view, setView] = useState<ClaimView | null>(null);
+/** The agent writes plain text with occasional **bold**; render just that. */
+function withBold(text: string) {
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part));
+}
+
+export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
+  const live = useClaimLive(claimId, user.id);
   const [tab, setTab] = useState<"chat" | "file">("chat");
   const [busy, setBusy] = useState(false);
   const [openEmail, setOpenEmail] = useState<EmailDraft | null>(null);
   const [missingLocal, setMissingLocal] = useState<string[]>([]);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const view = live === "not_found" ? null : live;
+
+  // Runs a request that makes the agent work; its progress arrives live, so the response is ignored.
+  async function act(fn: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await fn();
+    } catch {
+      alert("משהו השתבש. נסה שוב.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
-    api.claim(claimId).then(setView).catch(() => navigate("/"));
+    if (live === "not_found") navigate("/");
+  }, [live]);
+
+  // A claim just created on the home screen: send its first message now that we're watching.
+  useEffect(() => {
+    const first = pendingFirstMessage.get(claimId);
+    if (!first) return;
+    pendingFirstMessage.delete(claimId);
+    act(() => api.sendMessage(claimId, first.text, first.documentIds));
   }, [claimId]);
 
   useEffect(() => {
@@ -41,14 +68,8 @@ export function ClaimPage({ claimId }: { claimId: number }) {
   const openTasks = tasks.filter((t) => t.status === "open");
   const docById = new Map(documents.map((d) => [d.id, d]));
 
-  async function send(text: string, documentIds: number[]) {
-    setBusy(true);
-    try {
-      setView(await api.sendMessage(claimId, text, documentIds));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const send = (text: string, documentIds: string[]) => act(() => api.sendMessage(claimId, text, documentIds));
+  const markSubmitted = () => act(() => api.markSubmitted(claimId));
 
   async function downloadPackage() {
     setBusy(true);
@@ -57,15 +78,6 @@ export function ClaimPage({ claimId }: { claimId: number }) {
       setMissingLocal(missing);
     } catch {
       alert("לא הצלחנו לבנות את הקובץ. נסה שוב.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function markSubmitted() {
-    setBusy(true);
-    try {
-      setView(await api.markSubmitted(claimId));
     } finally {
       setBusy(false);
     }
@@ -105,7 +117,7 @@ export function ClaimPage({ claimId }: { claimId: number }) {
       {openTasks.length > 0 && (
         <section className="tasks">
           {openTasks.map((t) => (
-            <TaskCard key={t.id} task={t} view={view} onUpdate={setView} setBusy={setBusy} />
+            <TaskCard key={t.id} task={t} view={view} act={act} />
           ))}
         </section>
       )}
@@ -123,7 +135,7 @@ export function ClaimPage({ claimId }: { claimId: number }) {
         <section className="chat">
           {chat.map((m) => (
             <div key={m.id} className={`bubble ${m.role}`}>
-              {m.text}
+              {withBold(m.text)}
             </div>
           ))}
           {busy && <div className="bubble assistant typing">הסוכן עובד…</div>}
@@ -143,7 +155,7 @@ export function ClaimPage({ claimId }: { claimId: number }) {
                   </div>
                   <div className="small muted">{r.note ?? REQ_STATUS[r.status].label}</div>
                 </div>
-                {docById.get(r.document_id ?? -1) && (
+                {docById.get(r.document_id ?? "") && (
                   <span className="small">
                     <DocLink doc={docById.get(r.document_id!)!}>צפה</DocLink>
                   </span>

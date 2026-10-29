@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, pendingFirstMessage } from "../api";
 import { navigate } from "../App";
 import { Disclaimer } from "../components/Disclaimer";
 import { Composer } from "../components/Composer";
-import type { ClaimSummary, Task, User } from "../types";
+import type { ClaimSummary, User } from "../types";
 
 const STATUS_LABEL: Record<ClaimSummary["status"], string> = {
   collecting: "אוסף מסמכים",
@@ -13,19 +13,20 @@ const STATUS_LABEL: Record<ClaimSummary["status"], string> = {
 
 export function Home({ user }: { user: User }) {
   const [claims, setClaims] = useState<ClaimSummary[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [busy, setBusy] = useState(false);
+  const tasks = claims.flatMap((c) => c.open_task_list.map((t) => ({ ...t, claim_title: c.title })));
 
   useEffect(() => {
     api.claims().then(setClaims);
-    api.openTasks().then(setTasks);
   }, []);
 
-  async function startClaim(text: string, documentIds: number[]) {
+  async function startClaim(text: string, documentIds: string[]) {
     setBusy(true);
     try {
-      const view = await api.createClaim(text, documentIds);
-      navigate(`/claims/${view.claim.id}`);
+      const claim = await api.createClaim();
+      // The claim screen sends this message and shows the agent working on it live.
+      pendingFirstMessage.set(claim.id, { text, documentIds });
+      navigate(`/claims/${claim.id}`);
     } finally {
       setBusy(false);
     }

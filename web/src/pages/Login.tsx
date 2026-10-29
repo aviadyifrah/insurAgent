@@ -1,34 +1,18 @@
-import { useEffect, useState } from "react";
-import { api, ApiError } from "../api";
-import type { User } from "../types";
+import { useState } from "react";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { auth } from "../firebase";
 
-export function Login({ onLogin }: { onLogin: (u: User) => void }) {
-  const [email, setEmail] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [accessCode, setAccessCode] = useState("");
-  const [codeRequired, setCodeRequired] = useState(false);
+export function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    api.config().then((c) => setCodeRequired(c.access_code_required)).catch(() => {});
-  }, []);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function signIn() {
     setBusy(true);
     setError("");
     try {
-      onLogin(await api.login(email, consent, accessCode));
-    } catch (err) {
-      const code = err instanceof ApiError ? err.message : "";
-      setError(
-        code === "consent_required"
-          ? "כדי להמשיך יש לאשר את תנאי השימוש ומדיניות הפרטיות."
-          : code === "bad_access_code"
-            ? "קוד הגישה שגוי."
-            : "לא הצלחנו להתחבר. בדוק את כתובת המייל.",
-      );
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch {
+      setError("ההתחברות לא הושלמה. נסה שוב.");
     } finally {
       setBusy(false);
     }
@@ -42,30 +26,15 @@ export function Login({ onLogin }: { onLogin: (u: User) => void }) {
         כלי עזר להכנת תביעות להחזר הוצאות רפואיות. ספר איזה טיפול עשית, ונעזור לך לאסוף את המסמכים, למלא את הטופס ולהכין הכול
         להגשה. את התביעה מגישים בעצמכם.
       </p>
-      <form onSubmit={submit} className="card">
-        <label>
-          אימייל
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" autoComplete="email" />
-        </label>
-        {codeRequired && (
-          <label>
-            קוד גישה
-            <input value={accessCode} onChange={(e) => setAccessCode(e.target.value)} dir="ltr" autoComplete="off" required />
-          </label>
-        )}
-        <label className="consent">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-          <span>
-            קראתי ואני מסכים/ה ל<a href="#/legal">תנאי השימוש ולמדיניות הפרטיות</a>, כולל עיבוד המסמכים שאעלה באמצעות שירות בינה
-            מלאכותית של ספק חיצוני.
-          </span>
-        </label>
-        <button className="primary" disabled={busy}>
-          {busy ? "מתחבר…" : "כניסה"}
+      <div className="card">
+        <button className="primary google" onClick={signIn} disabled={busy}>
+          {busy ? "מתחבר…" : "התחברות עם Google"}
         </button>
         {error && <p className="error">{error}</p>}
-        <p className="hint">כניסת פיתוח. בהמשך: התחברות עם Google או קוד ב-SMS.</p>
-      </form>
+        <p className="hint">
+          <a href="#/legal">תנאי שימוש ופרטיות</a>
+        </p>
+      </div>
     </main>
   );
 }

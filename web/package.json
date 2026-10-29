@@ -10,6 +10,7 @@
   "dependencies": {
     "@fontsource/noto-sans-hebrew": "^5.3.0",
     "@insuragent/shared": "*",
+    "firebase": "^13.1.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

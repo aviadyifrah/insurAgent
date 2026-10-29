@@ -1,5 +1,5 @@
 export interface User {
-  id: number;
+  id: string;
   email: string;
   full_name: string | null;
   id_number: string | null;
@@ -8,7 +8,8 @@ export interface User {
 }
 
 export interface Claim {
-  id: number;
+  id: string;
+  user_id: string;
   title: string | null;
   treatment: string | null;
   provider: string | null;
@@ -25,46 +26,50 @@ export interface ClaimSummary extends Claim {
   total: number;
   done: number;
   open_tasks: number;
+  open_task_list: Task[];
 }
 
 export interface Requirement {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
-  required: number;
-  needs_signature: number;
+  required: boolean;
+  needs_signature: boolean;
   status: "missing" | "pending_user" | "pending_third_party" | "done" | "not_needed";
-  document_id: number | null;
+  document_id: string | null;
   note: string | null;
+  sort: number;
 }
 
 export interface Task {
-  id: number;
-  claim_id: number;
-  requirement_id: number | null;
-  email_draft_id: number | null;
+  id: string;
+  claim_id: string;
+  requirement_id: string | null;
+  email_draft_id: string | null;
   type: "upload" | "sign" | "send_email" | "action";
   title: string;
   instructions: string;
   status: "open" | "done" | "cancelled";
   reminder_count: number;
-  claim_title?: string | null;
+  created_at: string;
 }
 
 export interface EmailDraft {
-  id: number;
+  id: string;
   purpose: "request_documents" | "submit_claim" | "other";
   to_address: string | null;
   subject: string;
   body: string;
-  attachment_ids: number[];
+  attachment_ids: string[];
   status: "draft" | "sent";
+  created_at: string;
 }
 
 export interface DocumentRow {
-  id: number;
-  claim_id: number | null;
+  id: string;
+  claim_id: string | null;
   kind: string | null;
+  reusable: boolean;
   filename: string;
   mime: string;
   storage: "device";
@@ -74,7 +79,7 @@ export interface DocumentRow {
 }
 
 export interface ChatMessage {
-  id: number;
+  id: string;
   role: "user" | "assistant" | "event";
   text: string;
   created_at: string;

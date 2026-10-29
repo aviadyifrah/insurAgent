@@ -2,3 +2,7 @@ node_modules/
 dist/
 .env
 server/data/
+deploy/
+.firebase/
+.emulator-data/
+*-debug.log

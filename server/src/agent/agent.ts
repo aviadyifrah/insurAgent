@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { all, get, run, type Claim, type DocumentRow, type User } from "../db";
-import { addChat, claimSnapshot, touchClaim } from "../claims";
+import { addChat, claimSnapshot } from "../claims";
+import { child, getClaim, getUser, list, now, updateClaim, type DocumentRow } from "../store";
 import { SYSTEM_PROMPT } from "./prompt";
 import { executeTool, toolDefinitions } from "./tools";
 
@@ -11,10 +11,11 @@ const MAX_STEPS = 20;
 type MessageParam = Anthropic.Beta.BetaMessageParam;
 type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 
-// One agent run per claim at a time; later events queue behind the current run.
-const queues = new Map<number, Promise<void>>();
+// One agent run per claim at a time; later events queue behind the current run. This lock lives in
+// memory, so the deployed function runs with maxInstances: 1 (see functions.ts).
+const queues = new Map<string, Promise<void>>();
 
-export function runAgent(claimId: number, input: ContentBlockParam[]): Promise<void> {
+export function runAgent(claimId: string, input: ContentBlockParam[]): Promise<void> {
   const prev = queues.get(claimId) ?? Promise.resolve();
   const next = prev.catch(() => {}).then(() => runAgentNow(claimId, input));
   queues.set(claimId, next);
@@ -31,31 +32,39 @@ export function documentBlocks(docs: DocumentRow[]): ContentBlockParam[] {
   return docs.map((doc) => ({
     type: "text",
     text: `<uploaded_document document_id="${doc.id}" filename="${doc.filename}">\n${
-      doc.analysis ?? "(automatic analysis unavailable; ask the user what this document is)"
+      doc.analysis ? JSON.stringify(doc.analysis) : "(automatic analysis unavailable; ask the user what this document is)"
     }\n</uploaded_document>`,
   }));
 }
 
-function loadHistory(claimId: number): MessageParam[] {
-  return all<{ role: "user" | "assistant"; content: string }>(
-    "SELECT role, content FROM agent_turns WHERE claim_id = ? ORDER BY id",
-    claimId,
-  ).map((t) => ({ role: t.role, content: JSON.parse(t.content) }));
+interface StoredTurn {
+  id: string;
+  role: "user" | "assistant";
+  content: string; // JSON: content blocks can nest arrays, which Firestore can't store natively
 }
 
-function saveTurn(claimId: number, message: MessageParam) {
-  run("INSERT INTO agent_turns (claim_id, role, content) VALUES (?, ?, ?)", claimId, message.role, JSON.stringify(message.content));
+async function loadHistory(claimId: string): Promise<MessageParam[]> {
+  const turns = await list<StoredTurn>(child(claimId, "turns").orderBy("seq"));
+  return turns.map((t) => ({ role: t.role, content: JSON.parse(t.content) }));
 }
 
-async function runAgentNow(claimId: number, input: ContentBlockParam[]) {
-  const claim = get<Claim>("SELECT * FROM claims WHERE id = ?", claimId)!;
-  const user = get<User>("SELECT * FROM users WHERE id = ?", claim.user_id)!;
+async function saveTurn(claimId: string, seq: number, message: MessageParam) {
+  await child(claimId, "turns")
+    .doc(String(seq).padStart(6, "0"))
+    .create({ seq, role: message.role, content: JSON.stringify(message.content), created_at: now() });
+}
+
+async function runAgentNow(claimId: string, input: ContentBlockParam[]) {
+  const claim = (await getClaim(claimId))!;
+  const user = (await getUser(claim.user_id))!;
 
   // History is append-only and replayed verbatim (thinking blocks included).
-  const messages = loadHistory(claimId);
-  const userTurn: MessageParam = { role: "user", content: [...input, { type: "text", text: claimSnapshot(claim) }] };
-  messages.push(userTurn);
-  saveTurn(claimId, userTurn);
+  const messages = await loadHistory(claimId);
+  const push = async (message: MessageParam) => {
+    messages.push(message);
+    await saveTurn(claimId, messages.length - 1, message);
+  };
+  await push({ role: "user", content: [...input, { type: "text", text: await claimSnapshot(claim) }] });
 
   for (let step = 0; step < MAX_STEPS; step++) {
     let response: Anthropic.Beta.BetaMessage;
@@ -74,24 +83,22 @@ async function runAgentNow(claimId: number, input: ContentBlockParam[]) {
       });
     } catch (err) {
       console.error("agent API error", err);
-      addChat(claimId, "assistant", "משהו השתבש אצלי בצד. נסה לשלוח שוב בעוד רגע.");
+      await addChat(claim, "assistant", "משהו השתבש אצלי בצד. נסה לשלוח שוב בעוד רגע.");
       return;
     }
 
-    const assistantTurn: MessageParam = { role: "assistant", content: response.content };
-    messages.push(assistantTurn);
-    saveTurn(claimId, assistantTurn);
+    await push({ role: "assistant", content: response.content });
 
     const text = response.content
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
       .map((b) => b.text)
       .join("\n")
       .trim();
-    if (text) addChat(claimId, "assistant", text);
+    if (text) await addChat(claim, "assistant", text);
 
     if (response.stop_reason === "pause_turn") continue;
     if (response.stop_reason === "refusal") {
-      addChat(claimId, "assistant", "לא אוכל לעזור בבקשה הזו.");
+      await addChat(claim, "assistant", "לא אוכל לעזור בבקשה הזו.");
       break;
     }
     if (response.stop_reason !== "tool_use") break;
@@ -102,9 +109,7 @@ async function runAgentNow(claimId: number, input: ContentBlockParam[]) {
       const { content, isError } = await executeTool(use.name, use.input, { claim, user });
       results.push({ type: "tool_result", tool_use_id: use.id, content, is_error: isError });
     }
-    const resultsTurn: MessageParam = { role: "user", content: results };
-    messages.push(resultsTurn);
-    saveTurn(claimId, resultsTurn);
+    await push({ role: "user", content: results });
   }
-  touchClaim(claimId);
+  await updateClaim(claimId, {});
 }
