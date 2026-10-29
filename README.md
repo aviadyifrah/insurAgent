@@ -64,7 +64,9 @@ npm run deploy
 הפקודה בונה את האתר, אורזת את השרת לתיקייה `server/deploy/` ומעלה את Hosting, Functions, חוקי Firestore והאינדקסים.
 
 **הערות:**
-- השרת רץ עם `maxInstances: 1`, כי הנעילה שמונעת מהסוכן לרוץ פעמיים על אותה תביעה נמצאת בזיכרון. לפני שגדלים, צריך להעביר אותה ל-Firestore.
+- בקשות ל-API חוזרות מיד. עבודת הסוכן נכנסת לתור ב-Firestore (`claims/*/inbox`), ופונקציית `agent` מריצה אותה ברקע עד 9 דקות. הסיבה: Firebase Hosting מנתק בקשות אחרי 60 שניות.
+- פונקציית הסוכן רצה עם `maxInstances: 1`, כי הנעילה שמונעת מהסוכן לרוץ פעמיים על אותה תביעה נמצאת בזיכרון. לפני שגדלים, צריך להעביר אותה ל-Firestore.
+- Firestore צריך להיות במיקום שמתאים לאזור הפונקציות: `eur3` או `europe-west1`.
 - האזור של הפונקציות הוא `europe-west1` (ב-[server/src/functions.ts](server/src/functions.ts) וב-[firebase.json](firebase.json)).
 - מפתח ה-API נשמר ב-Secret Manager. מעבר ל-Workload Identity Federation (בלי מפתח) אפשרי בהמשך, אבל דורש רכיב שמושך טוקן מהשרת של Google.
 
