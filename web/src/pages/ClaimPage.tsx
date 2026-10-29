@@ -58,7 +58,7 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [view?.chat.length, busy, tab]);
+  }, [view?.chat.length, view?.claim.agent_status, busy, tab]);
 
   if (!view) return <div className="splash">טוען…</div>;
 
@@ -67,6 +67,10 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
   const done = required.filter((r) => r.status === "done" || r.status === "not_needed").length;
   const openTasks = tasks.filter((t) => t.status === "open");
   const docById = new Map(documents.map((d) => [d.id, d]));
+  // The agent runs in the background; its status comes from Firestore. A run that died without
+  // resetting the status stops counting as "working" after 10 minutes.
+  const agentWorking =
+    claim.agent_status === "working" && Date.now() - Date.parse(claim.agent_started_at ?? "") < 10 * 60 * 1000;
 
   const send = (text: string, documentIds: string[]) => act(() => api.sendMessage(claimId, text, documentIds));
   const markSubmitted = () => act(() => api.markSubmitted(claimId));
@@ -138,7 +142,7 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
               {withBold(m.text)}
             </div>
           ))}
-          {busy && <div className="bubble assistant typing">הסוכן עובד…</div>}
+          {(busy || agentWorking) && <div className="bubble assistant typing">הסוכן עובד…</div>}
           <div ref={chatEnd} />
         </section>
       ) : (

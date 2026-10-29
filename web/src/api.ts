@@ -1,4 +1,4 @@
-import type { Claim, ClaimSummary, ClaimView, DocumentRow, User } from "./types";
+import type { Claim, ClaimSummary, DocumentRow, User } from "./types";
 import { documentStore } from "./documentStore";
 import { auth } from "./firebase";
 
@@ -52,8 +52,8 @@ export const api = {
   claims: () => request<ClaimSummary[]>("/claims"),
   createClaim: () => post<Claim>("/claims"),
   sendMessage: (claimId: string, text: string, document_ids: string[]) =>
-    post<ClaimView>(`/claims/${claimId}/messages`, { text, document_ids }),
-  markSubmitted: (claimId: string) => post<ClaimView>(`/claims/${claimId}/submitted`),
+    post<{ ok: boolean }>(`/claims/${claimId}/messages`, { text, document_ids }),
+  markSubmitted: (claimId: string) => post<{ ok: boolean }>(`/claims/${claimId}/submitted`),
 
   /** Keeps the file in the document store and sends it to the server once, for analysis only. */
   async upload(file: File, claimId?: string): Promise<DocumentRow> {
@@ -68,11 +68,11 @@ export const api = {
   },
 
   completeTask: (claimId: string, taskId: string, document_ids: string[] = [], note?: string) =>
-    post<ClaimView>(`/claims/${claimId}/tasks/${taskId}/complete`, { document_ids, note }),
+    post<{ ok: boolean }>(`/claims/${claimId}/tasks/${taskId}/complete`, { document_ids, note }),
   async sign(claimId: string, taskId: string, pngDataUrl: string) {
     const blob = await (await fetch(pngDataUrl)).blob();
     const ref = await documentStore.put(blob, "signature.png");
-    return post<ClaimView>(`/claims/${claimId}/tasks/${taskId}/signature`, { storage: documentStore.kind, storage_ref: ref });
+    return post<{ ok: boolean }>(`/claims/${claimId}/tasks/${taskId}/signature`, { storage: documentStore.kind, storage_ref: ref });
   },
-  emailSent: (claimId: string, emailId: string) => post<ClaimView>(`/claims/${claimId}/emails/${emailId}/sent`),
+  emailSent: (claimId: string, emailId: string) => post<{ ok: boolean }>(`/claims/${claimId}/emails/${emailId}/sent`),
 };

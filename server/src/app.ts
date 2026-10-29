@@ -5,7 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { auth } from "./firebase";
 import { addChat, claimView, closeTask } from "./claims";
-import { documentBlocks, runAgent } from "./agent/agent";
+import { documentBlocks, type Dispatch } from "./agent/agent";
 import { ANALYZABLE_MIME, analyzeDocument } from "./agent/extract";
 import {
   add,
@@ -34,6 +34,8 @@ const CONSENT_VERSION = "draft-2026-10";
 export interface AppConfig {
   /** Until the product opens up, new users need this code (anyone can sign in with Google). */
   accessCode: () => string;
+  /** Hands work to the agent without waiting for it (see Dispatch). */
+  dispatch: Dispatch;
 }
 
 type Env = { Variables: { uid: string; email: string; user: User } };
@@ -162,6 +164,8 @@ export function createApp(config: AppConfig) {
       amount: null,
       template_id: null,
       status: "collecting",
+      agent_status: "idle",
+      agent_started_at: null,
       created_at: now(),
       updated_at: now(),
     });
@@ -177,8 +181,8 @@ export function createApp(config: AppConfig) {
     const docs = await ownedDocuments(user.id, document_ids);
     await attachToClaim(docs, claim.id);
     await addChat(claim, "user", text || "(צירפתי מסמכים)");
-    await runAgent(claim.id, [...documentBlocks(docs), { type: "text", text: text || "(the user attached documents)" }]);
-    return c.json(await claimView((await getClaim(claim.id))!));
+    await config.dispatch(claim.id, [...documentBlocks(docs), { type: "text", text: text || "(the user attached documents)" }]);
+    return c.json({ ok: true });
   });
 
   api.post("/claims/:id/submitted", async (c) => {
@@ -187,7 +191,7 @@ export function createApp(config: AppConfig) {
     const open = await list<Task>(child(claim.id, "tasks").where("status", "==", "open"));
     await Promise.all(open.map((t) => closeTask(claim.id, t.id, "done")));
     await addChat(claim, "event", "🎉 סימנת שהתביעה הוגשה");
-    return c.json(await claimView((await getClaim(claim.id))!));
+    return c.json({ ok: true });
   });
 
   // --- Documents (metadata only; the client keeps the file) ---
@@ -238,7 +242,7 @@ export function createApp(config: AppConfig) {
     await attachToClaim(docs, claim.id);
     await closeTask(claim.id, task.id, "done");
     await addChat(claim, "event", `✅ הושלם: ${task.title}`);
-    await runAgent(claim.id, [
+    await config.dispatch(claim.id, [
       ...documentBlocks(docs),
       {
         type: "text",
@@ -247,7 +251,7 @@ export function createApp(config: AppConfig) {
         }${note ? ` User note: ${note}` : ""}</app_event>`,
       },
     ]);
-    return c.json(await claimView((await getClaim(claim.id))!));
+    return c.json({ ok: true });
   });
 
   api.post("/claims/:id/tasks/:taskId/signature", async (c) => {
@@ -272,13 +276,13 @@ export function createApp(config: AppConfig) {
       await child(claim.id, "requirements").doc(task.requirement_id).update({ status: "done", document_id: doc.id });
     }
     await addChat(claim, "event", "✍️ חתמת על טופס התביעה");
-    await runAgent(claim.id, [
+    await config.dispatch(claim.id, [
       {
         type: "text",
         text: `<app_event type="signature_added" task_id="${task.id}" document_id="${doc.id}">The user signed. The linked requirement is now done.</app_event>`,
       },
     ]);
-    return c.json(await claimView((await getClaim(claim.id))!));
+    return c.json({ ok: true });
   });
 
   // --- Email drafts ---
@@ -294,13 +298,13 @@ export function createApp(config: AppConfig) {
       if (t.requirement_id) await child(claim.id, "requirements").doc(t.requirement_id).update({ status: "pending_third_party" });
     }
     await addChat(claim, "event", `📧 נשלח: ${draft.subject}`);
-    await runAgent(claim.id, [
+    await config.dispatch(claim.id, [
       {
         type: "text",
         text: `<app_event type="email_sent" email_draft_id="${draft.id}" purpose="${draft.purpose}">The user sent the email "${draft.subject}".</app_event>`,
       },
     ]);
-    return c.json(await claimView((await getClaim(claim.id))!));
+    return c.json({ ok: true });
   });
 
   const app = new Hono();

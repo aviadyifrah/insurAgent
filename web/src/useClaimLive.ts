@@ -15,18 +15,27 @@ export function useClaimLive(claimId: string, uid: string): ClaimView | null | "
   useEffect(() => {
     setParts({});
     const sub = (name: string) => query(collection(db, "claims", claimId, name), where("user_id", "==", uid));
+    // A denied or failed listener means the claim isn't viewable; don't spin on "loading" forever.
+    const fail = (err: Error) => {
+      console.error("live view failed", err);
+      setParts((p) => ({ ...p, claimMissing: true }));
+    };
     const listen = <T,>(q: Query, key: string, sort?: (a: T, b: T) => number) =>
-      onSnapshot(q, (snap) => {
-        const rows = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
-        if (sort) rows.sort(sort);
-        setParts((p) => ({ ...p, [key]: rows }));
-      });
+      onSnapshot(
+        q,
+        (snap) => {
+          const rows = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
+          if (sort) rows.sort(sort);
+          setParts((p) => ({ ...p, [key]: rows }));
+        },
+        fail,
+      );
 
     const unsubs = [
       onSnapshot(
         doc(db, "claims", claimId),
         (snap) => setParts((p) => (snap.exists() ? { ...p, claim: { ...snap.data(), id: snap.id } as Claim } : { ...p, claimMissing: true })),
-        () => setParts((p) => ({ ...p, claimMissing: true })),
+        fail,
       ),
       listen<Requirement>(sub("requirements"), "requirements", (a, b) => a.sort - b.sort),
       listen<Task>(sub("tasks"), "tasks", byCreated),

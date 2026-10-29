@@ -1,6 +1,7 @@
 // Bundles the server into deploy/ as a standalone Cloud Functions source: one JS file, the knowledge
 // base, and a package.json listing only what the Functions runtime installs itself.
 import fs from "node:fs";
+import { execSync } from "node:child_process";
 import { build } from "esbuild";
 
 const OUT = "deploy";
@@ -38,4 +39,6 @@ fs.writeFileSync(
     2,
   ),
 );
+// The Firebase CLI loads the code locally to discover the functions, so the runtime deps must be installed.
+execSync("npm install --omit=dev --no-audit --no-fund --loglevel=error", { cwd: OUT, stdio: "inherit" });
 console.log(`built ${OUT}/`);

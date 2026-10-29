@@ -19,6 +19,8 @@ export interface Claim {
   claim_type: string | null;
   amount: number | null;
   status: "collecting" | "ready" | "submitted";
+  agent_status?: "idle" | "working";
+  agent_started_at?: string | null;
   updated_at: string;
 }
 

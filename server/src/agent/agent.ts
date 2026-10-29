@@ -12,17 +12,40 @@ type MessageParam = Anthropic.Beta.BetaMessageParam;
 type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 
 // One agent run per claim at a time; later events queue behind the current run. This lock lives in
-// memory, so the deployed function runs with maxInstances: 1 (see functions.ts).
+// memory, so the deployed agent function runs with maxInstances: 1 (see functions.ts).
 const queues = new Map<string, Promise<void>>();
 
 export function runAgent(claimId: string, input: ContentBlockParam[]): Promise<void> {
   const prev = queues.get(claimId) ?? Promise.resolve();
   const next = prev.catch(() => {}).then(() => runAgentNow(claimId, input));
   queues.set(claimId, next);
-  return next.finally(() => {
-    if (queues.get(claimId) === next) queues.delete(claimId);
+  return next.finally(async () => {
+    if (queues.get(claimId) !== next) return;
+    queues.delete(claimId);
+    await updateClaim(claimId, { agent_status: "idle" });
   });
 }
+
+/**
+ * How an API request hands work to the agent. It must return quickly: an agent turn can take
+ * minutes, longer than Firebase Hosting keeps a request open (60s). Screens follow the progress
+ * live through Firestore.
+ */
+export type Dispatch = (claimId: string, input: ContentBlockParam[]) => Promise<void>;
+
+const markWorking = (claimId: string) => updateClaim(claimId, { agent_status: "working", agent_started_at: now() });
+
+/** Local development: the Node server keeps running, so the agent can run after the response. */
+export const dispatchInBackground: Dispatch = async (claimId, input) => {
+  await markWorking(claimId);
+  runAgent(claimId, input).catch((err) => console.error("agent run failed", err));
+};
+
+/** Cloud Functions: CPU stops after the response, so a Firestore-triggered function does the work. */
+export const dispatchToQueue: Dispatch = async (claimId, input) => {
+  await markWorking(claimId);
+  await child(claimId, "inbox").add({ content: JSON.stringify(input), created_at: now() });
+};
 
 /**
  * What the agent learns about uploaded documents: the analysis extracted at upload time, not the
@@ -64,6 +87,25 @@ async function runAgentNow(claimId: string, input: ContentBlockParam[]) {
     messages.push(message);
     await saveTurn(claimId, messages.length - 1, message);
   };
+
+  // A run cut off between a tool call and its result (timeout, crash) would make every later
+  // request fail. Close it out by appending results for the dangling calls.
+  const last = messages[messages.length - 1];
+  if (last?.role === "assistant" && Array.isArray(last.content)) {
+    const dangling = last.content.filter((b) => b.type === "tool_use");
+    if (dangling.length > 0) {
+      await push({
+        role: "user",
+        content: dangling.map((b) => ({
+          type: "tool_result" as const,
+          tool_use_id: (b as Anthropic.Beta.BetaToolUseBlock).id,
+          content: "interrupted: this call did not run; check claim_state before retrying",
+          is_error: true,
+        })),
+      });
+    }
+  }
+
   await push({ role: "user", content: [...input, { type: "text", text: await claimSnapshot(claim) }] });
 
   for (let step = 0; step < MAX_STEPS; step++) {

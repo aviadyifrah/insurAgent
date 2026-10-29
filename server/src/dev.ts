@@ -4,9 +4,10 @@ import path from "node:path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
+import { dispatchInBackground } from "./agent/agent";
 import { sendDueReminders } from "./reminders";
 
-const app = createApp({ accessCode: () => process.env.ACCESS_CODE ?? "" });
+const app = createApp({ accessCode: () => process.env.ACCESS_CODE ?? "", dispatch: dispatchInBackground });
 
 // Serve a built web app too, so `npm run build` + this server is enough for a quick check.
 const WEB_DIST = path.resolve("../web/dist");

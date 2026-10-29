@@ -4,6 +4,7 @@
 //   claims/{claimId}
 //   claims/{claimId}/requirements|tasks|emails|chat/{id}   every doc carries user_id + claim_id
 //   claims/{claimId}/turns/{seq}                           raw model turns, server-only
+//   claims/{claimId}/inbox/{id}                            queued agent input (production), server-only
 //   documents/{docId}                                      metadata only; files stay with the client
 import type { DocumentData, Query } from "firebase-admin/firestore";
 import { firestore } from "./firebase";
@@ -35,6 +36,9 @@ export interface Claim {
   amount: number | null;
   template_id: string | null;
   status: "collecting" | "ready" | "submitted";
+  /** Lets every open screen show that the agent is working, since its runs happen in the background. */
+  agent_status: "idle" | "working";
+  agent_started_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -114,7 +118,7 @@ export const now = () => new Date().toISOString();
 export const users = firestore.collection("users");
 export const claims = firestore.collection("claims");
 export const documents = firestore.collection("documents");
-export const child = (claimId: string, name: ClaimChild | "turns") => claims.doc(claimId).collection(name);
+export const child = (claimId: string, name: ClaimChild | "turns" | "inbox") => claims.doc(claimId).collection(name);
 
 function withId<T>(snap: FirebaseFirestore.DocumentSnapshot): T | undefined {
   return snap.exists ? ({ ...snap.data(), id: snap.id } as T) : undefined;

@@ -15,12 +15,9 @@ service cloud.firestore {
     match /claims/{claimId} {
       allow read: if isOwner(resource.data);
 
-      // Raw model turns stay server-side.
-      match /turns/{turnId} {
-        allow read: if false;
-      }
+      // Only what the claim screen shows. Raw model turns and the agent inbox stay server-side.
       match /{sub}/{docId} {
-        allow read: if sub != "turns" && isOwner(resource.data);
+        allow read: if sub in ["requirements", "tasks", "emails", "chat"] && isOwner(resource.data);
       }
     }
 
