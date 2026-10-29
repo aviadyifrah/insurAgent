@@ -41,7 +41,8 @@ async function prepareFile(file: File): Promise<File> {
 }
 
 export const api = {
-  login: (email: string, consent: boolean) => post<User>("/login", { email, consent }),
+  config: () => request<{ access_code_required: boolean }>("/config"),
+  login: (email: string, consent: boolean, access_code: string) => post<User>("/login", { email, consent, access_code }),
   logout: () => post("/logout"),
   me: () => request<User>("/me"),
   updateMe: (patch: Partial<User>) => request<User>("/me", { method: "PUT", body: JSON.stringify(patch) }),

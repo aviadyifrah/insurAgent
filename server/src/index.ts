@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Hono, type Context } from "hono";
@@ -12,7 +13,11 @@ import { documentBlocks, runAgent } from "./agent/agent";
 import { ANALYZABLE_MIME, analyzeDocument } from "./agent/extract";
 import { startReminderLoop } from "./reminders";
 
-const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-only-secret-change-me";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const SESSION_SECRET = process.env.SESSION_SECRET ?? (IS_PRODUCTION ? "" : "dev-only-secret-change-me");
+if (SESSION_SECRET.length < 32 && IS_PRODUCTION) throw new Error("SESSION_SECRET (32+ chars) is required in production");
+// Until real sign-in exists, a shared access code keeps the public site to invited testers.
+const ACCESS_CODE = process.env.ACCESS_CODE ?? "";
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 // Bump when the terms / privacy text changes; users are asked to accept again.
 const CONSENT_VERSION = "draft-2026-10";
@@ -30,8 +35,15 @@ app.onError((err, c) => {
 
 // --- Auth (development login: email only; Google sign-in replaces this) ---
 
+api.get("/health", (c) => c.json({ ok: true }));
+
+api.get("/config", (c) => c.json({ access_code_required: ACCESS_CODE !== "" }));
+
 api.post("/login", async (c) => {
-  const { email, consent } = z.object({ email: z.email(), consent: z.boolean().default(false) }).parse(await c.req.json());
+  const { email, consent, access_code } = z
+    .object({ email: z.email(), consent: z.boolean().default(false), access_code: z.string().default("") })
+    .parse(await c.req.json());
+  if (ACCESS_CODE && !safeEqual(access_code.trim(), ACCESS_CODE)) return c.json({ error: "bad_access_code" }, 403);
   const normalized = email.trim().toLowerCase();
   let user = get<User>("SELECT * FROM users WHERE email = ?", normalized);
   // Nobody uses the app without accepting the current terms; the acceptance is recorded with its version.
@@ -41,7 +53,13 @@ api.post("/login", async (c) => {
     run("UPDATE users SET consent_version = ?, consent_at = ? WHERE email = ?", CONSENT_VERSION, new Date().toISOString(), normalized);
     user = get<User>("SELECT * FROM users WHERE email = ?", normalized)!;
   }
-  await setSignedCookie(c, "uid", String(user.id), SESSION_SECRET, { httpOnly: true, sameSite: "Lax", path: "/" });
+  await setSignedCookie(c, "uid", String(user.id), SESSION_SECRET, {
+    httpOnly: true,
+    secure: IS_PRODUCTION,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
   return c.json(user);
 });
 
@@ -57,6 +75,11 @@ api.use("*", async (c, next) => {
   c.set("user", user);
   await next();
 });
+
+function safeEqual(a: string, b: string): boolean {
+  const [x, y] = [Buffer.from(a), Buffer.from(b)];
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
 
 function claimOr404(c: Context<Env>): Claim {
   const claim = getClaim(Number(c.req.param("id")), c.get("user").id);

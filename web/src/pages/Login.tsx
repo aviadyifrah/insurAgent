@@ -1,24 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import type { User } from "../types";
 
 export function Login({ onLogin }: { onLogin: (u: User) => void }) {
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
+  const [codeRequired, setCodeRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.config().then((c) => setCodeRequired(c.access_code_required)).catch(() => {});
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      onLogin(await api.login(email, consent));
+      onLogin(await api.login(email, consent, accessCode));
     } catch (err) {
+      const code = err instanceof ApiError ? err.message : "";
       setError(
-        err instanceof ApiError && err.message === "consent_required"
+        code === "consent_required"
           ? "כדי להמשיך יש לאשר את תנאי השימוש ומדיניות הפרטיות."
-          : "לא הצלחנו להתחבר. בדוק את כתובת המייל.",
+          : code === "bad_access_code"
+            ? "קוד הגישה שגוי."
+            : "לא הצלחנו להתחבר. בדוק את כתובת המייל.",
       );
     } finally {
       setBusy(false);
@@ -38,6 +47,12 @@ export function Login({ onLogin }: { onLogin: (u: User) => void }) {
           אימייל
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" autoComplete="email" />
         </label>
+        {codeRequired && (
+          <label>
+            קוד גישה
+            <input value={accessCode} onChange={(e) => setAccessCode(e.target.value)} dir="ltr" autoComplete="off" required />
+          </label>
+        )}
         <label className="consent">
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
           <span>
