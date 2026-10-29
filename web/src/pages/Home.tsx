@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { navigate } from "../App";
+import { Disclaimer } from "../components/Disclaimer";
 import { Composer } from "../components/Composer";
 import type { ClaimSummary, Task, User } from "../types";
 
@@ -86,6 +87,7 @@ export function Home({ user }: { user: User }) {
           </ul>
         </section>
       )}
+      <Disclaimer />
     </main>
   );
 }

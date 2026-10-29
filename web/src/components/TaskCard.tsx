@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { ClaimView, EmailDraft, Task, User } from "../types";
+import type { ClaimView, DocumentRow, EmailDraft, Task, User } from "../types";
+import { DocLink } from "./DocLink";
 import { SignaturePad } from "./SignaturePad";
 
 interface Props {
@@ -72,7 +73,7 @@ export function TaskCard({ task, view, onUpdate, setBusy }: Props) {
         <SignModal view={view} onClose={() => setOpen(false)} onSign={(png) => act(() => api.sign(task.id, png))} />
       )}
       {open && task.type === "send_email" && email && (
-        <EmailModal email={email} onClose={() => setOpen(false)} onSent={() => act(() => api.emailSent(email.id))} />
+        <EmailModal email={email} documents={view.documents} onClose={() => setOpen(false)} onSent={() => act(() => api.emailSent(email.id))} />
       )}
     </div>
   );
@@ -132,7 +133,17 @@ function SignModal({ view, onClose, onSign }: { view: ClaimView; onClose: () => 
   );
 }
 
-export function EmailModal({ email, onClose, onSent }: { email: EmailDraft; onClose: () => void; onSent?: () => void }) {
+export function EmailModal({
+  email,
+  documents,
+  onClose,
+  onSent,
+}: {
+  email: EmailDraft;
+  documents: DocumentRow[];
+  onClose: () => void;
+  onSent?: () => void;
+}) {
   const mailto = `mailto:${email.to_address ?? ""}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
   return (
     <Modal title="מייל מוכן לשליחה" onClose={onClose}>
@@ -152,11 +163,13 @@ export function EmailModal({ email, onClose, onSent }: { email: EmailDraft; onCl
           <p className="small">
             <strong>קבצים לצרף:</strong> הורד וצרף אותם למייל.
           </p>
-          {email.attachment_ids.map((id) => (
-            <a key={id} href={api.fileUrl(id)} target="_blank" rel="noreferrer" className="chip">
-              📎 מסמך #{id}
-            </a>
-          ))}
+          {documents
+            .filter((d) => email.attachment_ids.includes(d.id))
+            .map((d) => (
+              <span key={d.id} className="chip">
+                <DocLink doc={d}>📎 {d.filename}</DocLink>
+              </span>
+            ))}
         </div>
       )}
       <div className="btn-col">

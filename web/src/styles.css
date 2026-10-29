@@ -188,3 +188,14 @@ label input { margin-top: 0.25rem; color: var(--text); }
 .sigpad canvas { width: 100%; height: 160px; border: 1.5px dashed var(--border); border-radius: 12px; background: #fff; touch-action: none; display: block; }
 .sigpad-hint { position: absolute; inset: 0; display: grid; place-items: center; color: #b0b5c6; pointer-events: none; }
 .sigpad-clear { position: absolute; top: 6px; left: 6px; }
+
+/* Positioning, consent and legal */
+.disclaimer { font-size: 0.75rem; color: var(--muted); text-align: center; margin: 16px 0 8px; }
+.claim-page .disclaimer { margin: -6px 0 10px; text-align: start; }
+label.consent { display: flex; gap: 8px; align-items: flex-start; color: var(--text); font-size: 0.85rem; }
+label.consent input { width: auto; margin-top: 4px; flex: none; }
+.draft-banner { background: #fff4e5; color: #8a4b00; border: 1px solid #f5c98b; border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; }
+@media (prefers-color-scheme: dark) { .draft-banner { background: #3a2a12; color: #f5c98b; border-color: #6b4a1a; } }
+.legal ul { padding-inline-start: 1.2rem; margin: 0.4rem 0; }
+.legal li { margin-bottom: 0.4rem; }
+.legal .card { margin-top: 12px; }

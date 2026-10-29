@@ -1,4 +1,5 @@
 import type { ClaimSummary, ClaimView, DocumentRow, Task, User } from "./types";
+import { documentStore } from "./documentStore";
 
 export class ApiError extends Error {
   constructor(
@@ -40,7 +41,7 @@ async function prepareFile(file: File): Promise<File> {
 }
 
 export const api = {
-  login: (email: string) => post<User>("/login", { email }),
+  login: (email: string, consent: boolean) => post<User>("/login", { email, consent }),
   logout: () => post("/logout"),
   me: () => request<User>("/me"),
   updateMe: (patch: Partial<User>) => request<User>("/me", { method: "PUT", body: JSON.stringify(patch) }),
@@ -53,16 +54,24 @@ export const api = {
     post<ClaimView>(`/claims/${claimId}/messages`, { text, document_ids }),
   markSubmitted: (claimId: number) => post<ClaimView>(`/claims/${claimId}/submitted`),
 
+  /** Keeps the file in the document store and sends it to the server once, for analysis only. */
   async upload(file: File, claimId?: number): Promise<DocumentRow> {
+    const prepared = await prepareFile(file);
+    const ref = await documentStore.put(prepared, prepared.name);
     const form = new FormData();
-    form.append("file", await prepareFile(file));
+    form.append("file", prepared);
+    form.append("storage", documentStore.kind);
+    form.append("storage_ref", ref);
     if (claimId) form.append("claim_id", String(claimId));
     return request<DocumentRow>("/documents", { method: "POST", body: form });
   },
-  fileUrl: (documentId: number) => `/api/documents/${documentId}/file`,
 
   completeTask: (taskId: number, document_ids: number[] = [], note?: string) =>
     post<ClaimView>(`/tasks/${taskId}/complete`, { document_ids, note }),
-  sign: (taskId: number, image: string) => post<ClaimView>(`/tasks/${taskId}/signature`, { image }),
+  async sign(taskId: number, pngDataUrl: string) {
+    const blob = await (await fetch(pngDataUrl)).blob();
+    const ref = await documentStore.put(blob, "signature.png");
+    return post<ClaimView>(`/tasks/${taskId}/signature`, { storage: documentStore.kind, storage_ref: ref });
+  },
   emailSent: (emailId: number) => post<ClaimView>(`/emails/${emailId}/sent`),
 };

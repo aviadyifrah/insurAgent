@@ -3,7 +3,6 @@ import { z } from "zod";
 import { all, get, run, update, type Claim, type DocumentRow, type Requirement, type Task, type User } from "../db";
 import { claimDocuments, closeTask, createTask, touchClaim } from "../claims";
 import { findTemplate, templateById, templates } from "../knowledge";
-import { buildPackage } from "../pdf";
 
 export interface ToolContext {
   claim: Claim;
@@ -290,17 +289,16 @@ const tools = [
   tool({
     name: "prepare_submission_package",
     description:
-      "Build the final submission PDF (signed claim form + all attached documents) once every required requirement is 'done' or 'not_needed'. Returns what is still missing otherwise.",
+      "Mark the claim ready once every required requirement is 'done' or 'not_needed'. The app then lets the user download the submission PDF (signed claim form + all attached documents), built on their device. Returns what is still missing otherwise.",
     schema: z.object({}),
-    run: async (_input, ctx) => {
+    run: (_input, ctx) => {
       const reqs = all<Requirement>("SELECT * FROM requirements WHERE claim_id = ?", ctx.claim.id);
       if (reqs.length === 0) return { ok: false, error: "no requirements loaded" };
       const missing = reqs.filter((r) => r.required && r.status !== "done" && r.status !== "not_needed");
       if (missing.length > 0) return { ok: false, missing: missing.map((r) => ({ id: r.id, title: r.title, status: r.status })) };
-      const claim = get<Claim>("SELECT * FROM claims WHERE id = ?", ctx.claim.id)!;
-      const doc = await buildPackage(claim);
-      const tpl = claim.template_id ? templateById(claim.template_id) : undefined;
-      return ok({ package_document_id: doc.id, submission: tpl?.submission ?? null });
+      update("claims", ctx.claim.id, { status: "ready", updated_at: new Date().toISOString() });
+      const tpl = ctx.claim.template_id ? templateById(ctx.claim.template_id) : undefined;
+      return ok({ submission: tpl?.submission ?? null });
     },
   }),
 ];

@@ -18,7 +18,6 @@ export interface Claim {
   claim_type: string | null;
   amount: number | null;
   status: "collecting" | "ready" | "submitted";
-  package_document_id: number | null;
   updated_at: string;
 }
 
@@ -68,6 +67,10 @@ export interface DocumentRow {
   kind: string | null;
   filename: string;
   mime: string;
+  storage: "device";
+  storage_ref: string;
+  analysis: { summary_he?: string; warnings?: string[] } | null;
+  created_at: string;
 }
 
 export interface ChatMessage {

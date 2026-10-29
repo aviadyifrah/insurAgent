@@ -5,6 +5,7 @@ import { Login } from "./pages/Login";
 import { Home } from "./pages/Home";
 import { ClaimPage } from "./pages/ClaimPage";
 import { Profile } from "./pages/Profile";
+import { Legal } from "./pages/Legal";
 
 export function navigate(path: string) {
   window.location.hash = path;
@@ -31,6 +32,7 @@ export function App() {
       .catch(() => setUser(null));
   }, []);
 
+  if (route === "/legal") return <Legal />;
   if (user === undefined) return <div className="splash">טוען…</div>;
   if (user === null) return <Login onLogin={setUser} />;
 

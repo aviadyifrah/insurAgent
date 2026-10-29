@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { navigate } from "../App";
 import { Composer } from "../components/Composer";
+import { Disclaimer } from "../components/Disclaimer";
+import { DocLink } from "../components/DocLink";
 import { EmailModal, TaskCard } from "../components/TaskCard";
+import { downloadClaimPackage } from "../claimPackage";
 import type { ClaimView, EmailDraft, Requirement } from "../types";
 import { Progress } from "./Home";
 
@@ -19,6 +22,7 @@ export function ClaimPage({ claimId }: { claimId: number }) {
   const [tab, setTab] = useState<"chat" | "file">("chat");
   const [busy, setBusy] = useState(false);
   const [openEmail, setOpenEmail] = useState<EmailDraft | null>(null);
+  const [missingLocal, setMissingLocal] = useState<string[]>([]);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,11 +39,24 @@ export function ClaimPage({ claimId }: { claimId: number }) {
   const required = requirements.filter((r) => r.required);
   const done = required.filter((r) => r.status === "done" || r.status === "not_needed").length;
   const openTasks = tasks.filter((t) => t.status === "open");
+  const docById = new Map(documents.map((d) => [d.id, d]));
 
   async function send(text: string, documentIds: number[]) {
     setBusy(true);
     try {
       setView(await api.sendMessage(claimId, text, documentIds));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadPackage() {
+    setBusy(true);
+    try {
+      const { missing } = await downloadClaimPackage(view!, await api.me());
+      setMissingLocal(missing);
+    } catch {
+      alert("לא הצלחנו לבנות את הקובץ. נסה שוב.");
     } finally {
       setBusy(false);
     }
@@ -65,15 +82,19 @@ export function ClaimPage({ claimId }: { claimId: number }) {
           {required.length > 0 && <Progress done={done} total={required.length} />}
         </div>
       </header>
+      <Disclaimer />
 
-      {claim.package_document_id && claim.status !== "submitted" && (
+      {claim.status === "ready" && (
         <section className="card package">
-          <strong>📦 חבילת ההגשה מוכנה</strong>
-          <p className="small">הורד את הקובץ והגש אותו לפי ההנחיות בצ'אט. אחרי ההגשה סמן כאן.</p>
+          <strong>📦 התיק מוכן להגשה</strong>
+          <p className="small">הקובץ נבנה כאן במכשיר. הורד אותו והגש בעצמך לפי ההנחיות בצ'אט, ואחרי ההגשה סמן כאן.</p>
+          {missingLocal.length > 0 && (
+            <p className="small warn">לא נמצאו במכשיר הזה: {missingLocal.join(", ")}. העלה אותם שוב דרך הצ'אט.</p>
+          )}
           <div className="btn-row">
-            <a className="button primary" href={api.fileUrl(claim.package_document_id)} target="_blank" rel="noreferrer">
+            <button className="primary" onClick={downloadPackage} disabled={busy}>
               הורד PDF
-            </a>
+            </button>
             <button onClick={markSubmitted} disabled={busy}>
               הגשתי ✓
             </button>
@@ -122,10 +143,10 @@ export function ClaimPage({ claimId }: { claimId: number }) {
                   </div>
                   <div className="small muted">{r.note ?? REQ_STATUS[r.status].label}</div>
                 </div>
-                {r.document_id && (
-                  <a className="small" href={api.fileUrl(r.document_id)} target="_blank" rel="noreferrer">
-                    צפה
-                  </a>
+                {docById.get(r.document_id ?? -1) && (
+                  <span className="small">
+                    <DocLink doc={docById.get(r.document_id!)!}>צפה</DocLink>
+                  </span>
                 )}
               </li>
             ))}
@@ -154,10 +175,9 @@ export function ClaimPage({ claimId }: { claimId: number }) {
               .filter((d) => d.kind !== "signature")
               .map((d) => (
                 <li key={d.id}>
-                  <a href={api.fileUrl(d.id)} target="_blank" rel="noreferrer">
-                    📎 {d.filename}
-                  </a>
+                  <DocLink doc={d}>📎 {d.filename}</DocLink>
                   {d.claim_id !== claim.id && <span className="muted small"> (מתביעה קודמת)</span>}
+                  {d.analysis?.summary_he && <div className="small muted">{d.analysis.summary_he}</div>}
                 </li>
               ))}
           </ul>
@@ -170,7 +190,7 @@ export function ClaimPage({ claimId }: { claimId: number }) {
         </div>
       )}
 
-      {openEmail && <EmailModal email={openEmail} onClose={() => setOpenEmail(null)} />}
+      {openEmail && <EmailModal email={openEmail} documents={documents} onClose={() => setOpenEmail(null)} />}
     </main>
   );
 }

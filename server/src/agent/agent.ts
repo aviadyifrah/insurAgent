@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { all, get, run, type Claim, type DocumentRow, type User } from "../db";
 import { addChat, claimSnapshot, touchClaim } from "../claims";
-import { readDocument } from "../storage";
 import { SYSTEM_PROMPT } from "./prompt";
 import { executeTool, toolDefinitions } from "./tools";
 
@@ -24,19 +23,17 @@ export function runAgent(claimId: number, input: ContentBlockParam[]): Promise<v
   });
 }
 
-/** Content blocks that let the model see uploaded documents. */
+/**
+ * What the agent learns about uploaded documents: the analysis extracted at upload time, not the
+ * file itself, so the conversation never carries document contents.
+ */
 export function documentBlocks(docs: DocumentRow[]): ContentBlockParam[] {
-  const blocks: ContentBlockParam[] = [];
-  for (const doc of docs) {
-    const data = readDocument(doc).toString("base64");
-    if (doc.mime === "application/pdf") {
-      blocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data }, title: doc.filename });
-    } else if (doc.mime === "image/jpeg" || doc.mime === "image/png" || doc.mime === "image/webp") {
-      blocks.push({ type: "image", source: { type: "base64", media_type: doc.mime, data } });
-    }
-    blocks.push({ type: "text", text: `[document_id=${doc.id} filename="${doc.filename}"]` });
-  }
-  return blocks;
+  return docs.map((doc) => ({
+    type: "text",
+    text: `<uploaded_document document_id="${doc.id}" filename="${doc.filename}">\n${
+      doc.analysis ?? "(automatic analysis unavailable; ask the user what this document is)"
+    }\n</uploaded_document>`,
+  }));
 }
 
 function loadHistory(claimId: number): MessageParam[] {

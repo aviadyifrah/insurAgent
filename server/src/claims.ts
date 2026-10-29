@@ -64,7 +64,7 @@ export function getClaim(claimId: number, userId: number): Claim | undefined {
 /** Documents visible to a claim: its own plus the user's reusable ones from other claims. */
 export function claimDocuments(claim: Claim): DocumentRow[] {
   return all<DocumentRow>(
-    "SELECT * FROM documents WHERE (claim_id = ? OR (user_id = ? AND reusable = 1)) AND kind IS NOT 'package' ORDER BY id",
+    "SELECT * FROM documents WHERE claim_id = ? OR (user_id = ? AND reusable = 1) ORDER BY id",
     claim.id,
     claim.user_id,
   );
@@ -80,7 +80,7 @@ export function claimView(claim: Claim) {
       ...e,
       attachment_ids: JSON.parse(e.attachment_ids) as number[],
     })),
-    documents: claimDocuments(claim),
+    documents: claimDocuments(claim).map((d) => ({ ...d, analysis: d.analysis ? JSON.parse(d.analysis) : null })),
     chat: all<ChatMessage>("SELECT * FROM chat_messages WHERE claim_id = ? ORDER BY id", claim.id),
   };
 }
@@ -104,7 +104,6 @@ export function claimSnapshot(claim: Claim): string {
       amount: claim.amount,
       template_id: claim.template_id,
       status: claim.status,
-      package_ready: claim.package_document_id != null,
     },
     profile_complete: {
       full_name: !!user.full_name,

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { navigate } from "../App";
+import { Disclaimer } from "../components/Disclaimer";
 import type { User } from "../types";
 
 const FIELDS: { key: keyof User; label: string; ltr?: boolean }[] = [
@@ -65,6 +66,7 @@ export function Profile({ user, onChange, onLogout }: { user: User; onChange: (u
       >
         התנתקות
       </button>
+      <Disclaimer />
     </main>
   );
 }

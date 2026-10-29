@@ -8,12 +8,14 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { all, get, run, update, type Claim, type DocumentRow, type EmailDraft, type Task, type User } from "./db";
 import { addChat, claimView, closeTask, getClaim } from "./claims";
-import { ALLOWED_MIME, readDocument, saveDocument } from "./storage";
 import { documentBlocks, runAgent } from "./agent/agent";
+import { ANALYZABLE_MIME, analyzeDocument } from "./agent/extract";
 import { startReminderLoop } from "./reminders";
 
 const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-only-secret-change-me";
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+// Bump when the terms / privacy text changes; users are asked to accept again.
+const CONSENT_VERSION = "draft-2026-10";
 
 type Env = { Variables: { user: User } };
 const app = new Hono<Env>();
@@ -29,14 +31,15 @@ app.onError((err, c) => {
 // --- Auth (development login: email only; Google sign-in replaces this) ---
 
 api.post("/login", async (c) => {
-  const { email, full_name } = z
-    .object({ email: z.email(), full_name: z.string().optional() })
-    .parse(await c.req.json());
+  const { email, consent } = z.object({ email: z.email(), consent: z.boolean().default(false) }).parse(await c.req.json());
   const normalized = email.trim().toLowerCase();
   let user = get<User>("SELECT * FROM users WHERE email = ?", normalized);
-  if (!user) {
-    const id = run("INSERT INTO users (email, full_name) VALUES (?, ?)", normalized, full_name ?? null);
-    user = get<User>("SELECT * FROM users WHERE id = ?", id)!;
+  // Nobody uses the app without accepting the current terms; the acceptance is recorded with its version.
+  if (user?.consent_version !== CONSENT_VERSION) {
+    if (!consent) return c.json({ error: "consent_required" }, 400);
+    if (!user) run("INSERT INTO users (email) VALUES (?)", normalized);
+    run("UPDATE users SET consent_version = ?, consent_at = ? WHERE email = ?", CONSENT_VERSION, new Date().toISOString(), normalized);
+    user = get<User>("SELECT * FROM users WHERE email = ?", normalized)!;
   }
   await setSignedCookie(c, "uid", String(user.id), SESSION_SECRET, { httpOnly: true, sameSite: "Lax", path: "/" });
   return c.json(user);
@@ -158,30 +161,59 @@ api.post("/claims/:id/submitted", (c) => {
 
 // --- Documents ---
 
+function insertDocument(d: {
+  userId: number;
+  claimId: number | null;
+  filename: string;
+  mime: string;
+  storage: DocumentRow["storage"];
+  storageRef: string;
+  kind?: string;
+  analysis?: unknown;
+}): DocumentRow {
+  const id = run(
+    "INSERT INTO documents (user_id, claim_id, kind, filename, mime, storage, storage_ref, analysis) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    d.userId,
+    d.claimId,
+    d.kind ?? null,
+    d.filename,
+    d.mime,
+    d.storage,
+    d.storageRef,
+    d.analysis == null ? null : JSON.stringify(d.analysis),
+  );
+  return get<DocumentRow>("SELECT * FROM documents WHERE id = ?", id)!;
+}
+
+const storageInput = z.object({ storage: z.enum(["device"]), storage_ref: z.string().min(1).max(100) });
+
+// The client stores the file itself; we only read it once to extract its details.
 api.post("/documents", async (c) => {
   const user = c.get("user");
   const body = await c.req.parseBody();
   const file = body.file;
   if (!(file instanceof File)) throw new HTTPException(400, { message: "file is required" });
-  if (!ALLOWED_MIME.has(file.type)) throw new HTTPException(400, { message: "unsupported file type" });
+  if (!ANALYZABLE_MIME.has(file.type)) throw new HTTPException(400, { message: "unsupported file type" });
   if (file.size > MAX_UPLOAD_BYTES) throw new HTTPException(400, { message: "file too large" });
+  const { storage, storage_ref } = storageInput.parse(body);
   const claimId = body.claim_id ? claimOr404Id(Number(body.claim_id), user.id) : null;
-  const doc = saveDocument({
+
+  let analysis = null;
+  try {
+    analysis = await analyzeDocument(Buffer.from(await file.arrayBuffer()), file.type);
+  } catch (err) {
+    console.error("document analysis failed", err instanceof Error ? err.message : err);
+  }
+  const doc = insertDocument({
     userId: user.id,
     claimId,
-    filename: file.name || "upload",
+    filename: path.basename(file.name || "upload"),
     mime: file.type,
-    data: Buffer.from(await file.arrayBuffer()),
+    storage,
+    storageRef: storage_ref,
+    analysis,
   });
-  return c.json(doc);
-});
-
-api.get("/documents/:id/file", (c) => {
-  const [doc] = ownedDocuments(c.get("user").id, [Number(c.req.param("id"))]);
-  return c.body(new Uint8Array(readDocument(doc)), 200, {
-    "Content-Type": doc.mime,
-    "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
-  });
+  return c.json({ ...doc, analysis });
 });
 
 // --- Tasks ---
@@ -219,13 +251,15 @@ api.post("/tasks/:id/complete", async (c) => {
 api.post("/tasks/:id/signature", async (c) => {
   const user = c.get("user");
   const { task, claim } = taskOr404(c);
-  const { image } = z.object({ image: z.string().startsWith("data:image/png;base64,") }).parse(await c.req.json());
-  const doc = saveDocument({
+  // The signature image stays in the client's storage, like every other document.
+  const { storage, storage_ref } = storageInput.parse(await c.req.json());
+  const doc = insertDocument({
     userId: user.id,
     claimId: claim.id,
     filename: "signature.png",
     mime: "image/png",
-    data: Buffer.from(image.slice("data:image/png;base64,".length), "base64"),
+    storage,
+    storageRef: storage_ref,
     kind: "signature",
   });
   closeTask(task.id, "done");

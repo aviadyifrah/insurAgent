@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
   id_number TEXT,
   phone TEXT,
   bank_details TEXT,
+  consent_version TEXT,            -- version of the terms / privacy text the user accepted
+  consent_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -34,20 +36,23 @@ CREATE TABLE IF NOT EXISTS claims (
   amount REAL,
   template_id TEXT,
   status TEXT NOT NULL DEFAULT 'collecting', -- collecting | ready | submitted
-  package_document_id INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Document metadata only. File contents live wherever the storage column says (currently the user's device);
+-- the server sees the bytes only while analyzing an upload and never writes them to disk.
 CREATE TABLE IF NOT EXISTS documents (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
   claim_id INTEGER REFERENCES claims(id),
-  kind TEXT,                       -- receipt | treatment_details | id_copy | bank_confirmation | signature | package | ...
+  kind TEXT,                       -- receipt | treatment_details | id_copy | bank_confirmation | signature | ...
   reusable INTEGER NOT NULL DEFAULT 0, -- 1 = may be reused across claims (ID copy, bank confirmation)
   filename TEXT NOT NULL,
   mime TEXT NOT NULL,
-  path TEXT NOT NULL,
+  storage TEXT NOT NULL DEFAULT 'device', -- device | server (future)
+  storage_ref TEXT NOT NULL,       -- key of the file in that storage
+  analysis TEXT,                   -- JSON extracted from the document at upload time
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -139,6 +144,8 @@ export interface User {
   id_number: string | null;
   phone: string | null;
   bank_details: string | null;
+  consent_version: string | null;
+  consent_at: string | null;
 }
 
 export interface Claim {
@@ -156,7 +163,6 @@ export interface Claim {
   amount: number | null;
   template_id: string | null;
   status: "collecting" | "ready" | "submitted";
-  package_document_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -169,7 +175,9 @@ export interface DocumentRow {
   reusable: number;
   filename: string;
   mime: string;
-  path: string;
+  storage: "device" | "server";
+  storage_ref: string;
+  analysis: string | null;
   created_at: string;
 }
 
