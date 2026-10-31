@@ -52,7 +52,6 @@ npm run dev                          # אמולטורים של Firebase + שרת
    firebase login
    firebase use --add            # לבחור את הפרויקט; מעדכן את .firebaserc
    firebase functions:secrets:set ANTHROPIC_API_KEY
-   firebase functions:secrets:set ACCESS_CODE   # קוד שמשתמשים חדשים צריכים להקליד
    ```
 
 בכל עדכון:
@@ -103,7 +102,7 @@ firestore.rules         קריאה של נתונים עצמיים בלבד, בל
 
 ## הסכמה ותנאים
 
-כניסה ראשונה מחייבת אישור של תנאי השימוש ומדיניות הפרטיות, ואם הוגדר `ACCESS_CODE`, גם את קוד הגישה. האישור נשמר עם גרסת הנוסח (`CONSENT_VERSION` ב-[server/src/app.ts](server/src/app.ts)). הנוסח ב-`#/legal` הוא **טיוטה להדגמה** וממתין לבדיקה משפטית.
+כניסה ראשונה מחייבת אישור של תנאי השימוש ומדיניות הפרטיות, ואם הוגדר `ACCESS_CODE` ב-[server/.env.functions](server/.env.functions), גם את קוד הגישה (כרגע ריק: ההרשמה פתוחה). האישור נשמר עם גרסת הנוסח (`CONSENT_VERSION` ב-[server/src/app.ts](server/src/app.ts)). הנוסח ב-`#/legal` הוא **טיוטה להדגמה** וממתין לבדיקה משפטית.
 
 ## מה עוד לא קיים
 

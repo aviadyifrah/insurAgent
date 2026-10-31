@@ -10,16 +10,16 @@ import { sendDueReminders } from "./reminders";
 // Must be compatible with the Firestore location (europe-west1 works with eur3 and europe-west1).
 const REGION = "europe-west1";
 const anthropicKey = defineSecret("ANTHROPIC_API_KEY");
-const accessCode = defineSecret("ACCESS_CODE");
 
-const app = createApp({ accessCode: () => accessCode.value(), dispatch: dispatchToQueue });
+// Optional sign-up gate: set ACCESS_CODE in .env.functions to require a code from new users.
+const app = createApp({ accessCode: () => process.env.ACCESS_CODE ?? "", dispatch: dispatchToQueue });
 
 /** The API. Requests return quickly; agent work is queued for `agent` below. */
 export const api = onRequest(
   {
     region: REGION,
     // Uploads are analyzed inline (one model call, well under Hosting's 60s limit).
-    secrets: [anthropicKey, accessCode],
+    secrets: [anthropicKey],
     timeoutSeconds: 60,
     memory: "512MiB",
     concurrency: 40,
