@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/heebo": "^5.3.0",
     "@fontsource/noto-sans-hebrew": "^5.3.0",
     "@insuragent/shared": "*",
     "firebase": "^13.1.0",
