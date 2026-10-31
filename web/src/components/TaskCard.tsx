@@ -16,6 +16,7 @@ const ICON: Record<Task["type"], string> = { upload: "📷", sign: "✍️", sen
 export function TaskCard({ task, view, act }: Props) {
   const [open, setOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
   const email = view.emails.find((e) => e.id === task.email_draft_id);
   const claimId = view.claim.id;
 
@@ -24,16 +25,18 @@ export function TaskCard({ task, view, act }: Props) {
     return act(fn);
   }
 
-  function uploadAndComplete(files: FileList | null) {
-    if (!files?.length) return;
+  function uploadAndComplete(input: HTMLInputElement) {
+    const files = [...(input.files ?? [])];
+    input.value = "";
+    if (files.length === 0) return;
     return act(async () => {
-      const docs = await Promise.all([...files].map((f) => api.upload(f, claimId)));
+      const docs = await Promise.all(files.map((f) => api.upload(f, claimId)));
       await api.completeTask(claimId, task.id, docs.map((d) => d.id));
     });
   }
 
   const primary = {
-    upload: { label: "צלם / העלה", run: () => fileInput.current?.click() },
+    upload: { label: "📷 צילום", run: () => cameraInput.current?.click() },
     sign: { label: "חתום", run: () => setOpen(true) },
     send_email: { label: "פתח מייל", run: () => setOpen(true) },
     action: { label: "סיימתי", run: () => run(() => api.completeTask(claimId, task.id)) },
@@ -50,12 +53,16 @@ export function TaskCard({ task, view, act }: Props) {
         </div>
       </div>
       <div className="task-actions">
+        {task.type === "upload" && (
+          <>
+            <button onClick={() => fileInput.current?.click()}>📎 קובץ</button>
+            <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => uploadAndComplete(e.target)} />
+            <input ref={fileInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => uploadAndComplete(e.target)} />
+          </>
+        )}
         <button className="primary" onClick={primary.run}>
           {primary.label}
         </button>
-        {task.type === "upload" && (
-          <input ref={fileInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => uploadAndComplete(e.target.files)} />
-        )}
       </div>
 
       {open && task.type === "sign" && (

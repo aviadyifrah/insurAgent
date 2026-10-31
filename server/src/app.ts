@@ -182,7 +182,8 @@ export function createApp(config: AppConfig) {
     const docs = await ownedDocuments(user.id, document_ids);
     await consumeQuota(user.id, "messages");
     await attachToClaim(docs, claim.id);
-    await addChat(claim, "user", text || "(צירפתי מסמכים)");
+    const attached = docs.map((d) => `📎 ${d.filename}`).join("\n");
+    await addChat(claim, "user", [text, attached].filter(Boolean).join("\n"));
     await config.dispatch(claim.id, [...documentBlocks(docs), { type: "text", text: text || "(the user attached documents)" }]);
     return c.json({ ok: true });
   });

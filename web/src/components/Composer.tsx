@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { api, errorMessage } from "../api";
-import type { DocumentRow } from "../types";
 import { useDictation } from "../useDictation";
 
 interface Props {
@@ -10,55 +9,57 @@ interface Props {
   onSend: (text: string, documentIds: string[]) => Promise<void>;
 }
 
-/** Message box with attachments; files upload as soon as they're picked. */
+const FILE_TYPES = "image/*,application/pdf";
+
+/**
+ * Message box. A photo or file is sent to the agent as soon as it's picked (with any text already
+ * typed), so the user doesn't have to tap send after taking a picture.
+ */
 export function Composer({ claimId, placeholder, busy, onSend }: Props) {
   const [text, setText] = useState("");
-  const [docs, setDocs] = useState<DocumentRow[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState(0);
+  const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const dictation = useDictation(setText);
 
-  async function pickFiles(files: FileList | null) {
-    if (!files?.length) return;
-    setUploading(true);
+  async function sendFiles(input: HTMLInputElement) {
+    const files = [...(input.files ?? [])];
+    input.value = "";
+    if (files.length === 0) return;
+    dictation.stop();
+    setUploading(files.length);
     try {
-      const uploaded = await Promise.all([...files].map((f) => api.upload(f, claimId)));
-      setDocs((d) => [...d, ...uploaded]);
+      const docs = await Promise.all(files.map((f) => api.upload(f, claimId)));
+      const t = text.trim();
+      setText("");
+      await onSend(t, docs.map((d) => d.id));
     } catch (err) {
       alert(errorMessage(err, "ההעלאה נכשלה. אפשר לנסות שוב (תמונה או PDF)."));
     } finally {
-      setUploading(false);
-      if (fileInput.current) fileInput.current.value = "";
+      setUploading(0);
     }
   }
 
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
-    if (busy || uploading || (!text.trim() && docs.length === 0)) return;
+    if (busy || uploading || !text.trim()) return;
     dictation.stop();
-    const [t, ids] = [text.trim(), docs.map((d) => d.id)];
+    const t = text.trim();
     setText("");
-    setDocs([]);
-    await onSend(t, ids);
+    await onSend(t, []);
   }
 
   return (
     <form className="composer" onSubmit={send}>
-      {docs.length > 0 && (
-        <div className="chips">
-          {docs.map((d) => (
-            <span key={d.id} className="chip">
-              📎 {d.filename}
-              <button type="button" onClick={() => setDocs((all) => all.filter((x) => x.id !== d.id))} aria-label="הסר">
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
+      {uploading > 0 && (
+        <p className="small working">{uploading > 1 ? `מעלה ${uploading} מסמכים ובודק אותם…` : "מעלה את המסמך ובודק אותו…"}</p>
       )}
       <div className="composer-row">
-        <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} disabled={uploading} aria-label="צרף מסמך">
-          {uploading ? "⏳" : "📎"}
+        <button type="button" className="icon-btn" onClick={() => cameraInput.current?.click()} disabled={uploading > 0} aria-label="צילום מסמך">
+          📷
+        </button>
+        <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} disabled={uploading > 0} aria-label="צירוף קובץ">
+          📎
         </button>
         {dictation.supported && (
           <button
@@ -83,12 +84,14 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
             }
           }}
         />
-        <button className="send-btn" disabled={busy || uploading} aria-label="שלח">
+        <button className="send-btn" disabled={busy || uploading > 0} aria-label="שלח">
           ➤
         </button>
       </div>
       {dictation.error && <p className="small error">{dictation.error}</p>}
-      <input ref={fileInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => pickFiles(e.target.files)} />
+      {/* capture opens the camera directly on phones; the other input offers files and the gallery */}
+      <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => sendFiles(e.target)} />
+      <input ref={fileInput} type="file" accept={FILE_TYPES} multiple hidden onChange={(e) => sendFiles(e.target)} />
     </form>
   );
 }

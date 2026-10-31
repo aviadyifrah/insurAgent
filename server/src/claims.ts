@@ -112,5 +112,6 @@ export async function claimSnapshot(claim: Claim): Promise<string> {
     email_drafts: v.emails.map((e) => ({ id: e.id, purpose: e.purpose, to: e.to_address, subject: e.subject, status: e.status })),
     documents: v.documents.map((d) => ({ id: d.id, kind: d.kind, filename: d.filename, reusable: d.reusable, from_this_claim: d.claim_id === claim.id })),
   };
-  return `<claim_state>\n${JSON.stringify(state, null, 1)}\n</claim_state>`;
+  // The reminder sits next to the English app events and tool results that otherwise pull replies into English.
+  return `<claim_state>\n${JSON.stringify(state, null, 1)}\n</claim_state>\n(Reply to the user in Hebrew.)`;
 }

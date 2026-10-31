@@ -141,7 +141,7 @@ label input { margin-top: 0.25rem; color: var(--text); }
 .task { border-color: var(--primary); border-width: 1.5px; }
 .task-head { display: flex; gap: 10px; }
 .task-icon { font-size: 1.5rem; }
-.task-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.task-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .package { border-color: var(--success); border-width: 1.5px; margin-bottom: 12px; }
 .btn-row { display: flex; gap: 8px; margin-top: 8px; }
 .btn-col { display: grid; gap: 8px; margin-top: 12px; }
@@ -266,3 +266,5 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 /* Voice dictation */
 .mic-btn.listening { color: #fff; background: #dc2626; border-radius: 50%; width: 44px; height: 44px; font-size: 1.1rem; animation: mic-pulse 1.4s ease-in-out infinite; }
 @keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); } 50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); } }
+.composer-row .icon-btn { padding: 0.3rem 0.2rem; font-size: 1.25rem; }
+.composer-row textarea { min-width: 0; }
