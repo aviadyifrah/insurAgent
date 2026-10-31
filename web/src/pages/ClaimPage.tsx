@@ -59,12 +59,18 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [view?.chat.length, view?.claim.agent_status, busy, tab]);
+  }, [view?.chat.length, view?.reminders.length, view?.claim.agent_status, busy, tab]);
 
   if (!view) return <div className="splash">טוען…</div>;
 
   const { claim, requirements, tasks, emails, documents, chat, reminders } = view;
   const suggestedReminders = reminders.filter((r) => r.status === "suggested");
+  // A suggestion is created mid-turn, before the agent's message is saved; order it after the
+  // message that was written in the same run so the card follows the text that introduces it.
+  const timeline = [
+    ...chat.map((m) => ({ kind: "message" as const, at: m.created_at, m })),
+    ...suggestedReminders.map((r) => ({ kind: "reminder" as const, at: chat.find((m) => m.role === "assistant" && m.created_at > r.created_at)?.created_at ?? r.created_at, r })),
+  ].sort((a, b) => a.at.localeCompare(b.at) || (a.kind === "message" ? -1 : 1));
   const addedReminders = reminders.filter((r) => r.status === "added");
   const required = requirements.filter((r) => r.required);
   const done = required.filter((r) => r.status === "done" || r.status === "not_needed").length;
@@ -121,14 +127,6 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
         </section>
       )}
 
-      {suggestedReminders.length > 0 && (
-        <section className="tasks">
-          {suggestedReminders.map((r) => (
-            <ReminderCard key={r.id} reminder={r} onChoice={(status) => api.setReminder(claimId, r.id, status).catch(() => {})} />
-          ))}
-        </section>
-      )}
-
       {openTasks.length > 0 && (
         <section className="tasks">
           {openTasks.map((t) => (
@@ -148,11 +146,16 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
 
       {tab === "chat" ? (
         <section className="chat">
-          {chat.map((m) => (
-            <div key={m.id} className={`bubble ${m.role}`}>
-              {withBold(m.text)}
-            </div>
-          ))}
+          {timeline.map((item) =>
+            item.kind === "message" ? (
+              <div key={item.m.id} className={`bubble ${item.m.role}`}>
+                {withBold(item.m.text)}
+              </div>
+            ) : (
+              // Reminder suggestions sit in the conversation, where the agent mentions them.
+              <ReminderCard key={item.r.id} reminder={item.r} onChoice={(status) => api.setReminder(claimId, item.r.id, status).catch(() => {})} />
+            ),
+          )}
           {(busy || agentWorking) && <div className="bubble assistant typing">הסוכן עובד…</div>}
           <div ref={chatEnd} />
         </section>

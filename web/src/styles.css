@@ -159,7 +159,7 @@ label input { margin-top: 0.25rem; color: var(--text); }
 @keyframes pulse { 50% { opacity: 0.5; } }
 
 .composer-dock {
-  position: fixed; bottom: 0; left: 0; right: 0;
+  position: fixed; bottom: var(--keyboard-inset, 0px); left: 0; right: 0;
   background: var(--bg); border-top: 1px solid var(--border);
   padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
 }
