@@ -21,6 +21,9 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const dictation = useDictation(setText);
+  // No typing while a document uploads (here or from a task card, which sets `busy`), so a message
+  // can't race ahead of the document it refers to.
+  const locked = uploading > 0 || busy;
 
   async function sendFiles(input: HTMLInputElement) {
     const files = [...(input.files ?? [])];
@@ -42,7 +45,7 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
 
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
-    if (busy || uploading || !text.trim()) return;
+    if (locked || !text.trim()) return;
     dictation.stop();
     const t = text.trim();
     setText("");
@@ -55,16 +58,17 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
         <p className="small working">{uploading > 1 ? `מעלה ${uploading} מסמכים ובודק אותם…` : "מעלה את המסמך ובודק אותו…"}</p>
       )}
       <div className="composer-row">
-        <button type="button" className="icon-btn" onClick={() => cameraInput.current?.click()} disabled={uploading > 0} aria-label="צילום מסמך">
+        <button type="button" className="icon-btn" onClick={() => cameraInput.current?.click()} disabled={locked} aria-label="צילום מסמך">
           📷
         </button>
-        <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} disabled={uploading > 0} aria-label="צירוף קובץ">
+        <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} disabled={locked} aria-label="צירוף קובץ">
           📎
         </button>
         {dictation.supported && (
           <button
             type="button"
             className={`icon-btn mic-btn${dictation.listening ? " listening" : ""}`}
+            disabled={locked}
             onClick={() => (dictation.listening ? dictation.stop() : dictation.start(text))}
             aria-label={dictation.listening ? "עצור הקלטה" : "הקלטה קולית"}
             aria-pressed={dictation.listening}
@@ -75,7 +79,8 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
         <textarea
           rows={1}
           value={text}
-          placeholder={dictation.listening ? "מקשיב… אפשר לדבר" : placeholder}
+          disabled={locked}
+          placeholder={uploading > 0 ? "רגע, מעלה את המסמך…" : busy ? "רגע…" : dictation.listening ? "מקשיב… אפשר לדבר" : placeholder}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -84,7 +89,7 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
             }
           }}
         />
-        <button className="send-btn" disabled={busy || uploading > 0} aria-label="שלח">
+        <button className="send-btn" disabled={locked} aria-label="שלח">
           ➤
         </button>
       </div>
