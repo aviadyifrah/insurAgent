@@ -11,6 +11,13 @@ export class ApiError extends Error {
   }
 }
 
+/** User-facing text for a failed request. */
+export function errorMessage(err: unknown, fallback = "משהו השתבש. אפשר לנסות שוב."): string {
+  if (err instanceof ApiError && err.message === "daily_limit") return "הגעת למכסה היומית. אפשר להמשיך מחר.";
+  if (err instanceof ApiError && err.message === "service_busy") return "השירות עמוס היום. אפשר לנסות שוב מחר.";
+  return fallback;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isForm = init.body instanceof FormData;
   const token = await auth.currentUser?.getIdToken();

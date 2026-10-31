@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api } from "../api";
+import { api, errorMessage } from "../api";
 import type { DocumentRow } from "../types";
 
 interface Props {
@@ -22,8 +22,8 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
     try {
       const uploaded = await Promise.all([...files].map((f) => api.upload(f, claimId)));
       setDocs((d) => [...d, ...uploaded]);
-    } catch {
-      alert("ההעלאה נכשלה. נסה שוב (תמונה או PDF).");
+    } catch (err) {
+      alert(errorMessage(err, "ההעלאה נכשלה. אפשר לנסות שוב (תמונה או PDF)."));
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = "";

@@ -67,6 +67,10 @@ npm run deploy
 - בקשות ל-API חוזרות מיד. עבודת הסוכן נכנסת לתור ב-Firestore (`claims/*/inbox`), ופונקציית `agent` מריצה אותה ברקע עד 9 דקות. הסיבה: Firebase Hosting מנתק בקשות אחרי 60 שניות.
 - פונקציית הסוכן רצה עם `maxInstances: 1`, כי הנעילה שמונעת מהסוכן לרוץ פעמיים על אותה תביעה נמצאת בזיכרון. לפני שגדלים, צריך להעביר אותה ל-Firestore.
 - Firestore צריך להיות במיקום שמתאים לאזור הפונקציות: `eur3` או `europe-west1`.
+- **מכסות יומיות** (לפי שעון ישראל, על מה שעולה קריאות למודל):
+  - **למשתמש:** 30 הודעות לסוכן ו-20 העלאות מסמכים.
+  - **לכל המשתמשים יחד:** 300 הודעות ו-200 העלאות. זו תקרה שמגנה על התקציב.
+  - **שינוי:** ב-[server/.env.functions](server/.env.functions), ואחריו `npm run deploy`. ההגדרות האלה לא סודיות ונשמרות ב-git.
 - האזור של הפונקציות הוא `europe-west1` (ב-[server/src/functions.ts](server/src/functions.ts) וב-[firebase.json](firebase.json)).
 - מפתח ה-API נשמר ב-Secret Manager. מעבר ל-Workload Identity Federation (בלי מפתח) אפשרי בהמשך, אבל דורש רכיב שמושך טוקן מהשרת של Google.
 

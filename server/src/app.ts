@@ -7,6 +7,7 @@ import { auth } from "./firebase";
 import { addChat, claimView, closeTask } from "./claims";
 import { documentBlocks, type Dispatch } from "./agent/agent";
 import { ANALYZABLE_MIME, analyzeDocument } from "./agent/extract";
+import { consumeQuota } from "./quota";
 import {
   add,
   child,
@@ -179,6 +180,7 @@ export function createApp(config: AppConfig) {
     const claim = await claimOr404(c);
     const { text, document_ids } = messageInput.parse(await c.req.json());
     const docs = await ownedDocuments(user.id, document_ids);
+    await consumeQuota(user.id, "messages");
     await attachToClaim(docs, claim.id);
     await addChat(claim, "user", text || "(צירפתי מסמכים)");
     await config.dispatch(claim.id, [...documentBlocks(docs), { type: "text", text: text || "(the user attached documents)" }]);
@@ -205,6 +207,7 @@ export function createApp(config: AppConfig) {
     if (!(file instanceof File)) throw new HTTPException(400, { message: "file is required" });
     if (!ANALYZABLE_MIME.has(file.type)) throw new HTTPException(400, { message: "unsupported file type" });
     if (file.size > MAX_UPLOAD_BYTES) throw new HTTPException(400, { message: "file too large" });
+    await consumeQuota(user.id, "uploads");
     const { storage, storage_ref } = storageInput.parse(body);
     const claimId = typeof body.claim_id === "string" && body.claim_id ? (await claimOr404Id(body.claim_id, user.id)) : null;
 

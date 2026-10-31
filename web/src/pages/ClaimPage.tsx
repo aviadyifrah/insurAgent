@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, pendingFirstMessage } from "../api";
+import { api, errorMessage, pendingFirstMessage } from "../api";
 import { navigate } from "../App";
 import { useClaimLive } from "../useClaimLive";
 import { Composer } from "../components/Composer";
@@ -37,8 +37,8 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
     setBusy(true);
     try {
       await fn();
-    } catch {
-      alert("משהו השתבש. נסה שוב.");
+    } catch (err) {
+      alert(errorMessage(err));
     } finally {
       setBusy(false);
     }

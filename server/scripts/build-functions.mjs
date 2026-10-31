@@ -24,6 +24,8 @@ await build({
 });
 
 fs.cpSync("knowledge", `${OUT}/knowledge`, { recursive: true });
+// Non-secret settings for the deployed functions (e.g. daily limits); Cloud Functions reads .env from the source dir.
+if (fs.existsSync(".env.functions")) fs.copyFileSync(".env.functions", `${OUT}/.env`);
 fs.writeFileSync(
   `${OUT}/package.json`,
   JSON.stringify(
