@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import type { DocumentRow } from "../types";
+import { useDictation } from "../useDictation";
 
 interface Props {
   claimId?: string;
@@ -15,6 +16,7 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
   const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const dictation = useDictation(setText);
 
   async function pickFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -33,6 +35,7 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
     if (busy || uploading || (!text.trim() && docs.length === 0)) return;
+    dictation.stop();
     const [t, ids] = [text.trim(), docs.map((d) => d.id)];
     setText("");
     setDocs([]);
@@ -57,10 +60,21 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
         <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} disabled={uploading} aria-label="צרף מסמך">
           {uploading ? "⏳" : "📎"}
         </button>
+        {dictation.supported && (
+          <button
+            type="button"
+            className={`icon-btn mic-btn${dictation.listening ? " listening" : ""}`}
+            onClick={() => (dictation.listening ? dictation.stop() : dictation.start(text))}
+            aria-label={dictation.listening ? "עצור הקלטה" : "הקלטה קולית"}
+            aria-pressed={dictation.listening}
+          >
+            {dictation.listening ? "⏹" : "🎤"}
+          </button>
+        )}
         <textarea
           rows={1}
           value={text}
-          placeholder={placeholder}
+          placeholder={dictation.listening ? "מקשיב… אפשר לדבר" : placeholder}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -73,6 +87,7 @@ export function Composer({ claimId, placeholder, busy, onSend }: Props) {
           ➤
         </button>
       </div>
+      {dictation.error && <p className="small error">{dictation.error}</p>}
       <input ref={fileInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => pickFiles(e.target.files)} />
     </form>
   );
