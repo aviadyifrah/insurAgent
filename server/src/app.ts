@@ -21,6 +21,9 @@ import {
   requirementsOf,
   updateClaim,
   users,
+  israelDayPlus,
+  israelMorning,
+  type Reminder,
   type Claim,
   type DocumentRow,
   type EmailDraft,
@@ -194,6 +197,26 @@ export function createApp(config: AppConfig) {
     const open = await list<Task>(child(claim.id, "tasks").where("status", "==", "open"));
     await Promise.all(open.map((t) => closeTask(claim.id, t.id, "done")));
     await addChat(claim, "event", "🎉 סימנת שהתביעה הוגשה");
+    // Insurers take a few weeks; offer a calendar reminder to check the claim's status.
+    await add<Reminder>(child(claim.id, "reminders"), {
+      user_id: claim.user_id,
+      claim_id: claim.id,
+      title: `לבדוק סטטוס תביעה: ${claim.title ?? "תביעה"}`,
+      details: "לבדוק באזור האישי של חברת הביטוח אם התביעה טופלה או אם נדרשים מסמכים נוספים.",
+      due_at: israelMorning(israelDayPlus(21)),
+      status: "suggested",
+      created_at: now(),
+    });
+    return c.json({ ok: true });
+  });
+
+  // The user added a suggested reminder to their calendar, or declined it.
+  api.post("/claims/:id/reminders/:reminderId", async (c) => {
+    const claim = await claimOr404(c);
+    const { status } = z.object({ status: z.enum(["added", "dismissed"]) }).parse(await c.req.json());
+    const ref = child(claim.id, "reminders").doc(c.req.param("reminderId"));
+    if (!(await ref.get()).exists) throw new HTTPException(404, { message: "reminder not found" });
+    await ref.update({ status });
     return c.json({ ok: true });
   });
 

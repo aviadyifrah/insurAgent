@@ -2,7 +2,7 @@
 //
 //   users/{uid}
 //   claims/{claimId}
-//   claims/{claimId}/requirements|tasks|emails|chat/{id}   every doc carries user_id + claim_id
+//   claims/{claimId}/requirements|tasks|emails|chat|reminders/{id}   every doc carries user_id + claim_id
 //   claims/{claimId}/turns/{seq}                           raw model turns, server-only
 //   claims/{claimId}/inbox/{id}                            queued agent input (production), server-only
 //   documents/{docId}                                      metadata only; files stay with the client
@@ -102,6 +102,18 @@ export interface DocumentRow {
   created_at: string;
 }
 
+/** A reminder the user adds to their own calendar (the app doesn't send it). */
+export interface Reminder {
+  id: string;
+  user_id: string;
+  claim_id: string;
+  title: string;
+  details: string | null;
+  due_at: string; // ISO, 09:00 Israel time on the chosen day
+  status: "suggested" | "added" | "dismissed";
+  created_at: string;
+}
+
 export interface ChatMessage {
   id: string;
   user_id: string;
@@ -111,7 +123,7 @@ export interface ChatMessage {
   created_at: string;
 }
 
-export type ClaimChild = "requirements" | "tasks" | "emails" | "chat";
+export type ClaimChild = "requirements" | "tasks" | "emails" | "chat" | "reminders";
 
 export const now = () => new Date().toISOString();
 
@@ -168,4 +180,24 @@ export async function claimDocuments(claim: Claim): Promise<DocumentRow[]> {
   ]);
   const byId = new Map([...own, ...reusable].map((d) => [d.id, d]));
   return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export const remindersOf = (claimId: string) => list<Reminder>(child(claimId, "reminders").orderBy("created_at"));
+
+/** 09:00 Israel time on the given calendar day (YYYY-MM-DD), as an ISO timestamp. */
+export function israelMorning(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const noonUtc = new Date(Date.UTC(y, m - 1, d, 12));
+  const offset = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jerusalem", timeZoneName: "shortOffset" })
+    .formatToParts(noonUtc)
+    .find((p) => p.type === "timeZoneName")!
+    .value.match(/GMT([+-]\d+)/)![1];
+  return new Date(Date.UTC(y, m - 1, d, 9 - Number(offset))).toISOString();
+}
+
+/** Today's date in Israel plus `days`, as YYYY-MM-DD. */
+export function israelDayPlus(days: number): string {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const [y, m, d] = today.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }

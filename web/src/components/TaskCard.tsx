@@ -49,7 +49,6 @@ export function TaskCard({ task, view, act }: Props) {
         <div className="grow">
           <strong>{task.title}</strong>
           <p className="small">{task.instructions}</p>
-          {task.reminder_count > 0 && <p className="small muted">נשלחו {task.reminder_count} תזכורות</p>}
         </div>
       </div>
       <div className="task-actions">

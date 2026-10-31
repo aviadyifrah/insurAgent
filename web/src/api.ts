@@ -81,5 +81,7 @@ export const api = {
     const ref = await documentStore.put(blob, "signature.png");
     return post<{ ok: boolean }>(`/claims/${claimId}/tasks/${taskId}/signature`, { storage: documentStore.kind, storage_ref: ref });
   },
+  setReminder: (claimId: string, reminderId: string, status: "added" | "dismissed") =>
+    post<{ ok: boolean }>(`/claims/${claimId}/reminders/${reminderId}`, { status }),
   emailSent: (claimId: string, emailId: string) => post<{ ok: boolean }>(`/claims/${claimId}/emails/${emailId}/sent`),
 };

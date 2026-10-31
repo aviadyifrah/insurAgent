@@ -1,6 +1,8 @@
 import {
   add,
   chatOf,
+  remindersOf,
+  israelDayPlus,
   child,
   claimDocuments,
   emailsOf,
@@ -62,21 +64,22 @@ export async function addChat(claim: Claim, role: ChatMessage["role"], text: str
 
 /** Full payload for the claim screen (the client also listens to Firestore for live updates). */
 export async function claimView(claim: Claim) {
-  const [requirements, tasks, emails, documents, chat] = await Promise.all([
+  const [requirements, tasks, emails, documents, chat, reminders] = await Promise.all([
     requirementsOf(claim.id),
     tasksOf(claim.id),
     emailsOf(claim.id),
     claimDocuments(claim),
     chatOf(claim.id),
+    remindersOf(claim.id),
   ]);
-  return { claim, requirements, tasks, emails, documents, chat };
+  return { claim, requirements, tasks, emails, documents, chat, reminders };
 }
 
 /** Compact state the agent sees at the start of every turn. */
 export async function claimSnapshot(claim: Claim): Promise<string> {
   const [user, v] = await Promise.all([getUser(claim.user_id), claimView(claim)]);
   const state = {
-    today: now().slice(0, 10),
+    today: israelDayPlus(0), // Israel date; UTC is a day behind late at night
     claim: {
       title: claim.title,
       treatment: claim.treatment,
@@ -110,6 +113,7 @@ export async function claimSnapshot(claim: Claim): Promise<string> {
       .filter((t) => t.status === "open")
       .map((t) => ({ id: t.id, type: t.type, title: t.title, requirement_id: t.requirement_id, reminders_sent: t.reminder_count })),
     email_drafts: v.emails.map((e) => ({ id: e.id, purpose: e.purpose, to: e.to_address, subject: e.subject, status: e.status })),
+    reminders: v.reminders.map((r) => ({ title: r.title, day: r.due_at.slice(0, 10), status: r.status })),
     documents: v.documents.map((d) => ({ id: d.id, kind: d.kind, filename: d.filename, reusable: d.reusable, from_this_claim: d.claim_id === claim.id })),
   };
   // The reminder sits next to the English app events and tool results that otherwise pull replies into English.

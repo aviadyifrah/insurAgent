@@ -94,4 +94,15 @@ export interface ClaimView {
   emails: EmailDraft[];
   documents: DocumentRow[];
   chat: ChatMessage[];
+  reminders: Reminder[];
+}
+
+export interface Reminder {
+  id: string;
+  claim_id: string;
+  title: string;
+  details: string | null;
+  due_at: string;
+  status: "suggested" | "added" | "dismissed";
+  created_at: string;
 }

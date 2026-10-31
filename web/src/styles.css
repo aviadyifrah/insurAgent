@@ -268,3 +268,8 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 @keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); } 50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); } }
 .composer-row .icon-btn { padding: 0.3rem 0.2rem; font-size: 1.25rem; }
 .composer-row textarea { min-width: 0; }
+
+/* Reminder suggestions */
+.card.reminder { border-color: #d97706; border-width: 1.5px; }
+.reminder-actions { flex-wrap: wrap; align-items: center; }
+.reminder-actions .button, .reminder-actions button { padding: 0.5rem 0.8rem; font-size: 0.92rem; }

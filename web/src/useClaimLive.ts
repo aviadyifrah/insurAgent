@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, where, type Query } from "firebase/firestore";
 import { db } from "./firebase";
-import type { ChatMessage, Claim, ClaimView, DocumentRow, EmailDraft, Requirement, Task } from "./types";
+import type { ChatMessage, Claim, ClaimView, DocumentRow, EmailDraft, Reminder, Requirement, Task } from "./types";
 
 const byCreated = (a: { created_at: string }, b: { created_at: string }) => a.created_at.localeCompare(b.created_at);
 
@@ -41,6 +41,7 @@ export function useClaimLive(claimId: string, uid: string): ClaimView | null | "
       listen<Task>(sub("tasks"), "tasks", byCreated),
       listen<EmailDraft>(sub("emails"), "emails", byCreated),
       listen<ChatMessage>(sub("chat"), "chat", byCreated),
+      listen<Reminder>(sub("reminders"), "reminders", byCreated),
       listen<DocumentRow>(query(collection(db, "documents"), where("user_id", "==", uid), where("claim_id", "==", claimId)), "own"),
       listen<DocumentRow>(query(collection(db, "documents"), where("user_id", "==", uid), where("reusable", "==", true)), "reusable"),
     ];
@@ -48,8 +49,8 @@ export function useClaimLive(claimId: string, uid: string): ClaimView | null | "
   }, [claimId, uid]);
 
   if (parts.claimMissing) return "not_found";
-  const { claim, requirements, tasks, emails, chat, own, reusable } = parts;
-  if (!claim || !requirements || !tasks || !emails || !chat || !own || !reusable) return null;
+  const { claim, requirements, tasks, emails, chat, reminders, own, reusable } = parts;
+  if (!claim || !requirements || !tasks || !emails || !chat || !reminders || !own || !reusable) return null;
   const documents = [...new Map([...own, ...reusable].map((d) => [d.id, d])).values()].sort(byCreated);
-  return { claim, requirements, tasks, emails, chat, documents };
+  return { claim, requirements, tasks, emails, chat, reminders, documents };
 }

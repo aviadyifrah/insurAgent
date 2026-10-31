@@ -15,6 +15,9 @@ import {
   updateClaim,
   users,
   now,
+  israelDayPlus,
+  israelMorning,
+  type Reminder,
   type Claim,
   type DocumentRow,
   type EmailDraft,
@@ -309,6 +312,32 @@ const tools = [
         ).id;
       }
       return ok({ email_draft_id: draft.id, task_id: taskId });
+    },
+  }),
+
+  tool({
+    name: "suggest_reminder",
+    description:
+      "Offer the user a reminder they can add to their own phone calendar with one tap (the app shows a card with calendar buttons; the app itself does not send reminders). It is set for 09:00 Israel time on the chosen day; the user can change the time in their calendar. Use when the user asks to be reminded, or at a natural follow-up moment (see the system prompt). Don't offer a reminder that duplicates a pending or dismissed one in claim_state.",
+    schema: z.object({
+      title: z.string().describe("Short Hebrew calendar title, e.g. 'לבדוק אם המרפאה שלחה פירוט טיפולים'"),
+      details: z.string().optional().describe("One Hebrew sentence of context for the calendar entry"),
+      days_from_now: z.number().int().min(1).max(180).optional(),
+      date: z.string().optional().describe("YYYY-MM-DD; use instead of days_from_now for a specific day"),
+    }),
+    run: async (input, ctx) => {
+      const day = input.date ?? (input.days_from_now ? israelDayPlus(input.days_from_now) : undefined);
+      if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("give days_from_now or a YYYY-MM-DD date");
+      const reminder = await add<Reminder>(child(ctx.claim.id, "reminders"), {
+        user_id: ctx.claim.user_id,
+        claim_id: ctx.claim.id,
+        title: input.title,
+        details: input.details ?? null,
+        due_at: israelMorning(day),
+        status: "suggested",
+        created_at: now(),
+      });
+      return ok({ reminder_id: reminder.id, day, time: "09:00" });
     },
   }),
 

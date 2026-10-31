@@ -6,6 +6,7 @@ import { Composer } from "../components/Composer";
 import { Disclaimer } from "../components/Disclaimer";
 import { DocLink } from "../components/DocLink";
 import { EmailModal, TaskCard } from "../components/TaskCard";
+import { ReminderCard, reminderDay } from "../components/ReminderCard";
 import { downloadClaimPackage } from "../claimPackage";
 import type { EmailDraft, Requirement, User } from "../types";
 import { Progress } from "./Home";
@@ -62,7 +63,9 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
 
   if (!view) return <div className="splash">טוען…</div>;
 
-  const { claim, requirements, tasks, emails, documents, chat } = view;
+  const { claim, requirements, tasks, emails, documents, chat, reminders } = view;
+  const suggestedReminders = reminders.filter((r) => r.status === "suggested");
+  const addedReminders = reminders.filter((r) => r.status === "added");
   const required = requirements.filter((r) => r.required);
   const done = required.filter((r) => r.status === "done" || r.status === "not_needed").length;
   const openTasks = tasks.filter((t) => t.status === "open");
@@ -115,6 +118,14 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
               הגשתי ✓
             </button>
           </div>
+        </section>
+      )}
+
+      {suggestedReminders.length > 0 && (
+        <section className="tasks">
+          {suggestedReminders.map((r) => (
+            <ReminderCard key={r.id} reminder={r} onChoice={(status) => api.setReminder(claimId, r.id, status).catch(() => {})} />
+          ))}
         </section>
       )}
 
@@ -179,6 +190,19 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
                       <div className="small muted">{e.status === "sent" ? "נשלח" : "טיוטה"}</div>
                     </div>
                     <span className="chevron">‹</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {addedReminders.length > 0 && (
+            <>
+              <h3>תזכורות ביומן</h3>
+              <ul className="list">
+                {addedReminders.map((r) => (
+                  <li key={r.id}>
+                    ⏰ {r.title} <span className="small muted">· {reminderDay(r)}</span>
                   </li>
                 ))}
               </ul>

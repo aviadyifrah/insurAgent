@@ -17,7 +17,7 @@ service cloud.firestore {
 
       // Only what the claim screen shows. Raw model turns and the agent inbox stay server-side.
       match /{sub}/{docId} {
-        allow read: if sub in ["requirements", "tasks", "emails", "chat"] && isOwner(resource.data);
+        allow read: if sub in ["requirements", "tasks", "emails", "chat", "reminders"] && isOwner(resource.data);
       }
     }
 
