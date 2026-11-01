@@ -20,6 +20,7 @@ import {
   list,
   now,
   requirementsOf,
+  teamRequests,
   updateClaim,
   users,
   israelDayPlus,
@@ -30,6 +31,7 @@ import {
   type EmailDraft,
   type Requirement,
   type Task,
+  type TeamRequest,
   type User,
 } from "./store";
 
@@ -397,6 +399,23 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
+  /** Removes a document item the user asked to add (insurer-listed items can't be removed). */
+  api.delete("/claims/:id/requirements/:requirementId", async (c) => {
+    const claim = await claimOr404(c);
+    const requirement = await getDoc<Requirement>(child(claim.id, "requirements").doc(c.req.param("requirementId")));
+    if (!requirement) throw new HTTPException(404, { message: "requirement not found" });
+    if (!requirement.added_by_user) throw new HTTPException(400, { message: "only items you added can be removed" });
+    await child(claim.id, "requirements").doc(requirement.id).delete();
+    await addChat(claim, "event", `🗑 הוסר מהרשימה: ${requirement.title}`);
+    await config.dispatch(claim.id, [
+      {
+        type: "text",
+        text: `<app_event type="requirement_removed" requirement_id="${requirement.id}">The user removed "${requirement.title}", a document they had asked to add, from the checklist.</app_event>`,
+      },
+    ]);
+    return c.json({ ok: true });
+  });
+
   // --- Tasks ---
 
   api.post("/claims/:id/tasks/:taskId/complete", async (c) => {
@@ -483,7 +502,11 @@ export function createApp(config: AppConfig) {
   });
 
   admin.get("/overview", async (c) => {
-    const [allUsers, allClaims] = await Promise.all([list<User>(users), list<Claim>(claims)]);
+    const [allUsers, allClaims, requests] = await Promise.all([
+      list<User>(users),
+      list<Claim>(claims),
+      list<TeamRequest>(teamRequests.orderBy("created_at", "desc").limit(100)),
+    ]);
     const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
     const today = (await firestore.collection("usage").doc(`_all_${day}`).get()).data() ?? {};
     const byUser = new Map<string, Claim[]>();
@@ -518,6 +541,7 @@ export function createApp(config: AppConfig) {
         today_uploads: (today.uploads as number | undefined) ?? 0,
       },
       users: rows,
+      requests,
     });
   });
 

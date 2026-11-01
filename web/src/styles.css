@@ -348,3 +348,11 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 .tile-label { font-size: 0.85rem; color: var(--muted); }
 .admin-user { display: flex; align-items: center; gap: 10px; }
 .admin-user button { flex: none; font-size: 0.9rem; padding: 0.4rem 0.7rem; }
+
+/* Landing: supported claims */
+.supported { display: grid; gap: 10px; }
+@media (min-width: 600px) { .supported { grid-template-columns: 1fr 1fr; } }
+.supported-group { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; }
+.supported-group h3 { margin: 0 0 8px; font-size: 1.05rem; }
+.supported-group ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.supported-group li { background: var(--event); border-radius: 999px; padding: 3px 12px; font-size: 0.95rem; }

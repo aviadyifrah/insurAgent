@@ -28,11 +28,14 @@ export const templates: ClaimTemplate[] = fs
   .filter((f) => f.endsWith(".json"))
   .map((f) => JSON.parse(fs.readFileSync(path.join(KNOWLEDGE_DIR, f), "utf8")) as ClaimTemplate);
 
-/** The insurer's template for this claim type, else the insurer's general one (claim_type "*"). */
+/**
+ * The insurer's template for this claim type, else the insurer's general one (claim_type "*").
+ * Dental claims go on their own insurer forms, so they never fall back to the general list.
+ */
 export function findTemplate(insurerKey: string, claimType: string): ClaimTemplate | undefined {
   return (
     templates.find((t) => t.insurer_key === insurerKey && t.claim_type === claimType) ??
-    templates.find((t) => t.insurer_key === insurerKey && t.claim_type === "*")
+    (claimType === "dental" ? undefined : templates.find((t) => t.insurer_key === insurerKey && t.claim_type === "*"))
   );
 }
 

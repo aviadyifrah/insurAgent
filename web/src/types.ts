@@ -55,6 +55,7 @@ export interface Requirement {
   document_id: string | null;
   note: string | null;
   sort: number;
+  added_by_user?: boolean;
 }
 
 export interface Task {
@@ -143,5 +144,14 @@ export interface AdminOverview {
     approved_total: number;
     cost_usd: number;
     last_activity: string | null;
+  }[];
+  requests: {
+    id: string;
+    kind: "missing_template" | "user_added_document";
+    user_email: string;
+    insurer: string | null;
+    claim_type: string | null;
+    details: string;
+    created_at: string;
   }[];
 }

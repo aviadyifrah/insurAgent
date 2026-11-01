@@ -91,6 +91,9 @@ export const api = {
   replaceDocument: (claimId: string, requirementId: string, documentId: string) =>
     post<{ ok: boolean }>(`/claims/${claimId}/requirements/${requirementId}/replace`, { document_id: documentId }),
 
+  removeRequirement: (claimId: string, requirementId: string) =>
+    request<{ ok: boolean }>(`/claims/${claimId}/requirements/${requirementId}`, { method: "DELETE" }),
+
   /** Deletes on the server, then removes the files kept on this device. */
   async deleteDocument(documentId: string) {
     const r = await request<{ storage_ref: string }>(`/documents/${documentId}`, { method: "DELETE" });

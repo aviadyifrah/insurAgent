@@ -11,19 +11,6 @@ const client = new Anthropic();
 const MODEL = "claude-opus-5-5";
 const MAX_STEPS = 20;
 
-// Official sites of Israeli health insurers, health funds and the government, the only places the
-// agent may look up a claim's requirements when the knowledge base has no list for them.
-export const OFFICIAL_SITES = [
-  "harel-group.co.il", "fnx.co.il", "menoramivt.co.il", "menora.co.il", "migdal.co.il", "clalbit.co.il",
-  "clal.co.il", "clal-health.co.il", "ayalon-ins.co.il", "hachshara.co.il", "libra.co.il", "wesure.co.il",
-  "aig.co.il", "passportcard.co.il", "maccabi4u.co.il", "clalit.co.il", "meuhedet.co.il", "leumit.co.il", "gov.il",
-];
-
-const WEB_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
-  { type: "web_search_20260209", name: "web_search", max_uses: 4, allowed_domains: OFFICIAL_SITES },
-  { type: "web_fetch_20260209", name: "web_fetch", max_uses: 3, allowed_domains: OFFICIAL_SITES, max_content_tokens: 20000 },
-];
-
 type MessageParam = Anthropic.Beta.BetaMessageParam;
 type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 
@@ -136,7 +123,19 @@ interface StoredTurn {
 
 async function loadHistory(claimId: string): Promise<MessageParam[]> {
   const turns = await list<StoredTurn>(child(claimId, "turns").orderBy("seq"));
-  return turns.map((t) => ({ role: t.role, content: JSON.parse(t.content) }));
+  return turns
+    .map((t) => ({ role: t.role, content: withoutWebSearch(JSON.parse(t.content)) }))
+    .filter((m) => typeof m.content === "string" || m.content.length > 0);
+}
+
+const WEB_BLOCKS = new Set(["server_tool_use", "web_search_tool_result", "web_fetch_tool_result"]);
+
+/** The agent once had web search; older claims' history still holds those steps, which the API rejects without the tool. */
+function withoutWebSearch(content: string | ContentBlockParam[]): string | ContentBlockParam[] {
+  if (typeof content === "string") return content;
+  return content
+    .filter((b) => !WEB_BLOCKS.has(b.type))
+    .map((b) => (b.type === "text" && b.citations ? { ...b, citations: null } : b));
 }
 
 async function saveTurn(claimId: string, seq: number, message: MessageParam) {
@@ -184,7 +183,7 @@ async function runAgentNow(claimId: string, input: ContentBlockParam[], renewLea
         model: MODEL,
         max_tokens: 16000,
         system: SYSTEM_PROMPT,
-        tools: [...toolDefinitions, ...WEB_TOOLS],
+        tools: toolDefinitions,
         messages,
         output_config: { effort: "medium" },
         cache_control: { type: "ephemeral" },

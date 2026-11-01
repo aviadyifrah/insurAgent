@@ -83,6 +83,21 @@ export interface Requirement {
   document_id: string | null;
   note: string | null;
   sort: number;
+  /** Added because the user asked for it, not because the insurer lists it. The user can remove it. */
+  added_by_user?: boolean;
+}
+
+/** Something the team should look at: a claim the agent has no list for, or a document users add. */
+export interface TeamRequest {
+  id: string;
+  kind: "missing_template" | "user_added_document";
+  user_id: string;
+  user_email: string;
+  claim_id: string;
+  insurer: string | null;
+  claim_type: string | null;
+  details: string;
+  created_at: string;
 }
 
 export interface Task {
@@ -154,6 +169,8 @@ export const now = () => new Date().toISOString();
 export const users = firestore.collection("users");
 export const claims = firestore.collection("claims");
 export const documents = firestore.collection("documents");
+// Server-only (no client rule); listed on the admin screen.
+export const teamRequests = firestore.collection("team_requests");
 export const child = (claimId: string, name: ClaimChild | "turns" | "inbox") => claims.doc(claimId).collection(name);
 
 function withId<T>(snap: FirebaseFirestore.DocumentSnapshot): T | undefined {

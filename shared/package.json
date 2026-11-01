@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./pdf": "./src/pdf.ts"
+    "./pdf": "./src/pdf.ts",
+    "./supported": "./src/supported.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

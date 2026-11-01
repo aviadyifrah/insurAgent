@@ -125,6 +125,11 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
     });
   }
 
+  function removeRequirement(requirementId: string, title: string) {
+    if (!confirm(`להסיר את "${title}" מרשימת המסמכים?`)) return;
+    return act(() => api.removeRequirement(claimId, requirementId));
+  }
+
   function deleteDocument(documentId: string, filename: string) {
     if (!confirm(`להסיר את "${filename}" מהתיק?`)) return;
     return act(() => api.deleteDocument(documentId));
@@ -227,9 +232,18 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
                 <div className="grow">
                   <div>
                     {r.title}
-                    {!r.required && <span className="muted small"> (לפי הצורך)</span>}
+                    {r.added_by_user ? (
+                      <span className="muted small"> (נוסף לבקשתך)</span>
+                    ) : (
+                      !r.required && <span className="muted small"> (לפי הצורך)</span>
+                    )}
                   </div>
                   <div className="small muted">{r.note ?? REQ_STATUS[r.status].label}</div>
+                  {r.added_by_user && claim.status !== "submitted" && (
+                    <button className="link small" onClick={() => removeRequirement(r.id, r.title)}>
+                      הסר מהרשימה
+                    </button>
+                  )}
                 </div>
                 {docById.get(r.document_id ?? "") && (
                   <span className="small doc-actions">

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "../firebase";
+import { SUPPORTED } from "@insuragent/shared/supported";
 import { WhatsAppButton } from "../components/WhatsAppButton";
 
 const STEPS = [
@@ -117,6 +118,26 @@ export function Login() {
       </section>
 
       <section className="landing-section">
+        <h2>מה העוזר מכיר</h2>
+        <p className="section-lead">תביעות שיש לעוזר רשימת מסמכים מוכנה עבורן, לפי הטפסים של חברות הביטוח.</p>
+        <div className="supported">
+          {SUPPORTED.map((g) => (
+            <div key={g.title} className="supported-group">
+              <h3>{g.title}</h3>
+              <ul>
+                {g.insurers.map((i) => (
+                  <li key={i.key}>{i.name}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <p className="fits">
+          חסרה החברה או סוג התביעה שלכם? העוזר יגיד שהוא עוד לא מכיר, ונוסיף אותם. תמיד הפוליסה שלכם היא הקובעת.
+        </p>
+      </section>
+
+      <section className="landing-section">
         <h2>למה לא פשוט לשאול צ'אט AI?</h2>
         <p className="section-lead">צ'אט כללי יכול להסביר מה לעשות. כאן העבודה נעשית, ונשמרת לפעם הבאה.</p>
         <div className="benefits">
@@ -143,7 +164,6 @@ export function Login() {
             </div>
           ))}
         </div>
-        <p className="fits">מתאים לביטוחי בריאות פרטיים ולביטוח המשלים בקופות החולים: שיניים, משקפיים, טיפולים פרא-רפואיים ועוד.</p>
       </section>
 
       <section className="landing-section final-cta">

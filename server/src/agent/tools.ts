@@ -12,6 +12,7 @@ import {
   getUser,
   list,
   requirementsOf,
+  teamRequests,
   updateClaim,
   users,
   now,
@@ -23,6 +24,7 @@ import {
   type EmailDraft,
   type Requirement,
   type Task,
+  type TeamRequest,
   type User,
 } from "../store";
 
@@ -47,6 +49,19 @@ const id = z.string().min(1);
 const CLAIM_TYPE = z
   .enum(["dental", "optics", "paramedical", "consultation", "other"])
   .describe("dental = any treatment of teeth (root canal, crown, implant, filling, cleaning, orthodontics)");
+
+async function reportToTeam(ctx: ToolContext, kind: TeamRequest["kind"], details: string) {
+  await add<TeamRequest>(teamRequests, {
+    kind,
+    user_id: ctx.user.id,
+    user_email: ctx.user.email,
+    claim_id: ctx.claim.id,
+    insurer: ctx.claim.insurer ?? null,
+    claim_type: ctx.claim.claim_type ?? null,
+    details,
+    created_at: now(),
+  });
+}
 
 async function requirementOf(ctx: ToolContext, requirementId: string): Promise<Requirement> {
   const r = await getDoc<Requirement>(child(ctx.claim.id, "requirements").doc(requirementId));
@@ -89,7 +104,7 @@ const tools = [
   tool({
     name: "load_requirements_template",
     description:
-      "Load the document checklist for this claim from the knowledge base by insurer_key + claim_type. Creates the requirement items. If no specific template exists, returns the available templates: load the one for this insurer and claim type by template_id if it exists; only if the insurer has none, look up its requirements online and use 'generic-health'.",
+      "Load the document checklist for this claim from the knowledge base by insurer_key + claim_type. Creates the requirement items. If no specific template exists, returns the available templates: load the one for this insurer and claim type by template_id if it exists. If there is none, follow the prompt's section on claims without a list ('generic-health' only if the user wants to go on anyway).",
     schema: z.object({
       insurer_key: z.string().optional(),
       claim_type: CLAIM_TYPE.optional(),
@@ -148,14 +163,17 @@ const tools = [
   tool({
     name: "add_requirement",
     description:
-      "Add a document requirement the template does not cover. Only when the insurer itself lists it: it asked for it (an insurer_requested_documents event), the user says the insurer's form or website lists it, or you found it on the insurer's official website (put the page URL in the description). Never on your own initiative.",
+      "Add a document requirement the template does not cover. Never on your own initiative. added_by 'insurer': the insurer itself asked for it (an insurer_requested_documents event) or the user says the insurer's form lists it. added_by 'user': the user wants to include a document the insurer's list doesn't mention; it is shown as added at their request, they can remove it, and the team is told so it can review the list.",
     schema: z.object({
       title: z.string(),
       description: z.string(),
+      added_by: z.enum(["insurer", "user"]),
       required: z.boolean().default(true),
       needs_signature: z.boolean().default(false),
     }),
     run: async (input, ctx) => {
+      const byUser = input.added_by === "user";
+      if (byUser) await reportToTeam(ctx, "user_added_document", `${input.title}: ${input.description}`);
       const r = await add<Requirement>(child(ctx.claim.id, "requirements"), {
         user_id: ctx.claim.user_id,
         claim_id: ctx.claim.id,
@@ -168,8 +186,22 @@ const tools = [
         document_id: null,
         note: null,
         sort: 100,
+        ...(byUser && { added_by_user: true }),
       });
       return ok({ requirement_id: r.id });
+    },
+  }),
+
+  tool({
+    name: "report_missing_template",
+    description:
+      "Tell the InsurAgent team there is no document checklist for this insurer and claim type, so they can add one. Call it once, when load_requirements_template finds no template for this claim.",
+    schema: z.object({
+      details: z.string().describe("Short note: the treatment and anything the user said about the insurer's requirements"),
+    }),
+    run: async (input, ctx) => {
+      await reportToTeam(ctx, "missing_template", input.details);
+      return ok();
     },
   }),
 

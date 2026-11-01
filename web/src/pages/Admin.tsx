@@ -47,6 +47,27 @@ export function Admin() {
             <Tile label="העלאות היום" value={data.totals.today_uploads} />
           </section>
 
+          <h2>בקשות להוספה</h2>
+          {data.requests.length === 0 ? (
+            <p className="muted small">אין בקשות.</p>
+          ) : (
+            <ul className="list">
+              {data.requests.map((r) => (
+                <li key={r.id} className="card">
+                  <strong>{r.kind === "missing_template" ? "חסרה רשימה" : "מסמך שמשתמש הוסיף"}</strong>
+                  <span className="muted small">
+                    {" "}
+                    · {r.insurer ?? "חברה לא ידועה"} · {r.claim_type ?? "—"}
+                  </span>
+                  <div>{r.details}</div>
+                  <div className="small muted">
+                    <span dir="ltr">{r.user_email}</span> · {day(r.created_at)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <h2>משתמשים</h2>
           <ul className="list">
             {data.users.map((u) => (
