@@ -167,6 +167,7 @@ export function Login() {
         {error && <p className="error">{error}</p>}
         <p className="hero-note">כניסה עם חשבון Google, בלי סיסמה חדשה</p>
         <p className="hero-privacy">🔒 המסמכים שלכם נשמרים רק בטלפון שלכם</p>
+        <h2 className="examples-title">ככה זה נראה</h2>
         <ClaimExamples />
       </section>
 

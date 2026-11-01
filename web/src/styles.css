@@ -379,5 +379,6 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 .examples-dots { display: flex; justify-content: center; gap: 8px; }
 .examples-dots button { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: none; background: var(--border); }
 .examples-dots button.active { background: var(--primary); width: 22px; border-radius: 5px; }
-.hero .examples { margin-top: 24px; text-align: start; }
+.hero .examples-title { font-size: 1.55rem; font-weight: 800; margin: 32px 0 4px; }
+.hero .examples { margin-top: 8px; text-align: start; }
 .hero .examples-track .preview { box-shadow: 0 12px 32px rgba(20, 30, 70, 0.10); }
