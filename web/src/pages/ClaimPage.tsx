@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, pendingFirstMessage } from "../api";
 import { navigate } from "../App";
 import { useClaimLive } from "../useClaimLive";
+import { SUPPORT_PHONE_DISPLAY, whatsappLink } from "../support";
 import { Composer } from "../components/Composer";
 import { Disclaimer } from "../components/Disclaimer";
 import { DocLink } from "../components/DocLink";
@@ -21,7 +22,23 @@ const REQ_STATUS: Record<Requirement["status"], { icon: string; label: string }>
 
 /** The agent writes plain text with occasional **bold**; render just that. */
 function withBold(text: string) {
-  return text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part));
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : withSupportLink(part, i)));
+}
+
+/** The agent refers people to the team's WhatsApp number; make it tappable. */
+function withSupportLink(text: string, key: number) {
+  const parts = text.split(SUPPORT_PHONE_DISPLAY);
+  if (parts.length === 1) return text;
+  return parts.flatMap((p, i) =>
+    i === 0
+      ? [p]
+      : [
+          <a key={`${key}-${i}`} href={whatsappLink()} target="_blank" rel="noreferrer" dir="ltr">
+            {SUPPORT_PHONE_DISPLAY}
+          </a>,
+          p,
+        ],
+  );
 }
 
 export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {

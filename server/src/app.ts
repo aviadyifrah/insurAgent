@@ -76,7 +76,7 @@ export function createApp(config: AppConfig) {
   api.get("/me", async (c) => {
     const user = await getUser(c.get("uid"));
     if (user?.consent_version !== CONSENT_VERSION) return c.json({ error: "consent_required" }, 403);
-    return c.json(user);
+    return c.json({ ...user, claim_limit: claimLimit(user) });
   });
 
   api.post("/consent", async (c) => {
@@ -99,7 +99,8 @@ export function createApp(config: AppConfig) {
         created_at: now(),
         ...record,
       });
-    return c.json(await getUser(uid));
+    const created = (await getUser(uid))!;
+    return c.json({ ...created, claim_limit: claimLimit(created) });
   });
 
   api.use("*", async (c, next) => {
@@ -121,7 +122,8 @@ export function createApp(config: AppConfig) {
       })
       .parse(await c.req.json());
     await users.doc(c.get("user").id).update(patch);
-    return c.json(await getUser(c.get("user").id));
+    const updated = (await getUser(c.get("user").id))!;
+    return c.json({ ...updated, claim_limit: claimLimit(updated) });
   });
 
   // --- Claims ---
@@ -154,6 +156,9 @@ export function createApp(config: AppConfig) {
   // there, so the user watches the agent work live instead of waiting on this request.
   api.post("/claims", async (c) => {
     const user = c.get("user");
+    // Trial: a fixed number of claims per user; more is arranged with the team (see claimLimit).
+    const existing = (await claims.where("user_id", "==", user.id).count().get()).data().count;
+    if (existing >= claimLimit(user)) return c.json({ error: "claim_limit" }, 403);
     const claim = await add<Claim>(claims, {
       user_id: user.id,
       title: "תביעה חדשה",
@@ -337,6 +342,14 @@ export function createApp(config: AppConfig) {
   const app = new Hono();
   app.route("/api", api);
   return app;
+}
+
+/**
+ * How many claims a user may open. FREE_CLAIM_LIMIT applies to everyone; a `claim_limit` field on
+ * the user's Firestore document (set by hand, e.g. after a paid arrangement) overrides it.
+ */
+function claimLimit(user: User): number {
+  return (user as User & { claim_limit?: number }).claim_limit ?? Number(process.env.FREE_CLAIM_LIMIT ?? 1);
 }
 
 function safeEqual(a: string, b: string): boolean {

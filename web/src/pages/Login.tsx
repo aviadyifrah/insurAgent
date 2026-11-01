@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "../firebase";
+import { WhatsAppButton } from "../components/WhatsAppButton";
 
 const STEPS = [
   { icon: "💬", title: "מספרים מה היה", text: "איזה טיפול עשיתם, איפה ואיזה ביטוח יש לכם. במילים שלכם, כמו בצ'אט." },
@@ -83,6 +84,7 @@ export function Login() {
           <img src="/icon.svg" alt="" />
           <span>InsurAgent</span>
         </div>
+        <p className="trial-badge">גרסת ניסיון · תיק אחד ללא עלות</p>
         <h1>
           החזרי ביטוח בריאות,
           <br />
@@ -149,8 +151,17 @@ export function Login() {
         <SignInButton onClick={signIn} busy={busy} />
       </section>
 
+      <section className="landing-section trial-section">
+        <h2>גרסת ניסיון</h2>
+        <p>
+          בשלב הזה כל משתמש יכול לפתוח תיק אחד ללא עלות. צריכים יותר תיקים, עזרה מעבר למה שהאפליקציה עושה, או שיש לכם שאלה? דברו
+          איתנו.
+        </p>
+        <WhatsAppButton message="שלום, ראיתי את InsurAgent ויש לי שאלה:" />
+      </section>
+
       <footer className="landing-footer">
-        <p>InsurAgent הוא כלי עזר להכנת מסמכים. אינו סוכן ביטוח, אינו מייעץ ואינו מגיש תביעות בשמכם.</p>
+        <p>גרסת ניסיון. InsurAgent הוא כלי עזר להכנת מסמכים. אינו סוכן ביטוח, אינו מייעץ ואינו מגיש תביעות בשמכם.</p>
         <a href="#/legal">תנאי שימוש ופרטיות</a>
       </footer>
     </main>

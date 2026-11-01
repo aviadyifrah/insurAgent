@@ -73,6 +73,12 @@ npm run deploy
 - האזור של הפונקציות הוא `europe-west1` (ב-[server/src/functions.ts](server/src/functions.ts) וב-[firebase.json](firebase.json)).
 - מפתח ה-API נשמר ב-Secret Manager. מעבר ל-Workload Identity Federation (בלי מפתח) אפשרי בהמשך, אבל דורש רכיב שמושך טוקן מהשרת של Google.
 
+## גרסת ניסיון ומגבלת תיקים
+
+- **מגבלה:** כל משתמש יכול לפתוח תיק אחד (`FREE_CLAIM_LIMIT` ב-[server/.env.functions](server/.env.functions)). השרת אוכף את המגבלה, ומי שהגיע אליה רואה כפתור וואטסאפ במקום תיבת תביעה חדשה.
+- **הגדלה למשתמש מסוים:** ב-Firestore, במסמך של המשתמש תחת `users`, מוסיפים שדה `claim_limit` מסוג number, למשל 5.
+- **פנייה לצוות:** וואטסאפ 055-660-2851 (מוגדר ב-[web/src/support.ts](web/src/support.ts)). הסוכן מפנה לשם שאלות שמעבר לתיק, בקשות לתיקים נוספים ותמחור.
+
 ## איפה נשמר מה
 
 | מידע | איפה |

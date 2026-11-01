@@ -1,4 +1,5 @@
 import { navigate } from "../App";
+import { SUPPORT_PHONE_DISPLAY, whatsappLink } from "../support";
 
 /** Placeholder terms & privacy summary. The final text comes from legal review. */
 export function Legal() {
@@ -11,12 +12,12 @@ export function Legal() {
         <h1 className="grow">תנאי שימוש ופרטיות</h1>
       </header>
 
-      <p className="draft-banner">טיוטה לצורך הדגמה. הנוסח הסופי ייקבע לאחר בדיקה משפטית.</p>
+      <p className="draft-banner">גרסת ניסיון. הנוסח הוא טיוטה לצורך הדגמה, והנוסח הסופי ייקבע לאחר בדיקה משפטית.</p>
 
       <section className="card">
         <h2>מה השירות עושה</h2>
         <ul>
-          <li>InsurAgent הוא כלי עזר להכנת מסמכים לתביעת החזר הוצאות רפואיות.</li>
+          <li>InsurAgent הוא כלי עזר להכנת מסמכים לתביעת החזר הוצאות רפואיות, בגרסת ניסיון. בשלב זה כל משתמש יכול לפתוח תיק אחד ללא עלות.</li>
           <li>השירות אינו סוכן ביטוח, אינו משרד עורכי דין ואינו מייצג אותך מול חברת הביטוח או כל גורם אחר.</li>
           <li>השירות אינו מגיש תביעות ואינו שולח מיילים בשמך. ההגשה והשליחה נעשות על ידך בלבד.</li>
           <li>השירות אינו מעריך את סכום ההחזר ואינו קובע אם טיפול מכוסה. ההחלטה היא של חברת הביטוח לפי הפוליסה שלך.</li>
@@ -43,7 +44,12 @@ export function Legal() {
             <strong>בשרת נשמרים</strong>: פרטי הפרופיל שמסרת, פרטי התביעה, הפרטים שחולצו מהמסמכים (כגון ספק, תאריך וסכום), ההתכתבות
             עם העוזר וסטטוס המשימות.
           </li>
-          <li>ניתן לבקש מחיקה של כל המידע עליך. [פרטי קשר יתווספו]</li>
+          <li>
+            ניתן לבקש מחיקה של כל המידע עליך בוואטסאפ:{" "}
+            <a href={whatsappLink("שלום, אבקש למחוק את המידע שלי מ-InsurAgent.")} target="_blank" rel="noreferrer" dir="ltr">
+              {SUPPORT_PHONE_DISPLAY}
+            </a>
+          </li>
         </ul>
       </section>
     </main>

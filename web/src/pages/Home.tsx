@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, pendingFirstMessage } from "../api";
+import { api, ApiError, errorMessage, pendingFirstMessage } from "../api";
+import { WhatsAppButton } from "../components/WhatsAppButton";
 import { navigate } from "../App";
 import { Disclaimer } from "../components/Disclaimer";
 import { Composer } from "../components/Composer";
@@ -12,9 +13,11 @@ const STATUS_LABEL: Record<ClaimSummary["status"], string> = {
 };
 
 export function Home({ user }: { user: User }) {
-  const [claims, setClaims] = useState<ClaimSummary[]>([]);
+  const [claims, setClaims] = useState<ClaimSummary[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const tasks = claims.flatMap((c) => c.open_task_list.map((t) => ({ ...t, claim_title: c.title })));
+  const [limitHit, setLimitHit] = useState(false);
+  const tasks = (claims ?? []).flatMap((c) => c.open_task_list.map((t) => ({ ...t, claim_title: c.title })));
+  const atLimit = limitHit || (claims !== null && claims.length >= user.claim_limit);
 
   useEffect(() => {
     api.claims().then(setClaims);
@@ -27,6 +30,9 @@ export function Home({ user }: { user: User }) {
       // The claim screen sends this message and shows the agent working on it live.
       pendingFirstMessage.set(claim.id, { text, documentIds });
       navigate(`/claims/${claim.id}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.message === "claim_limit") setLimitHit(true);
+      else alert(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -41,15 +47,26 @@ export function Home({ user }: { user: User }) {
         </button>
       </header>
 
-      <section className="card new-claim">
-        <h2>תביעה חדשה</h2>
-        <p className="muted">ספרו איזה טיפול עשיתם ואיזה ביטוח יש לכם, בכתב או בהקלטה 🎤. למשל: "היה לי טיפול שורש בכללית סמייל, יש לי ביטוח שיניים בהראל".</p>
-        {busy ? (
-          <p className="working">הסוכן מתחיל לעבוד על התביעה…</p>
-        ) : (
-          <Composer placeholder="מה היה הטיפול?" busy={busy} onSend={startClaim} />
-        )}
-      </section>
+      {claims === null ? null : atLimit ? (
+        <section className="card limit-card">
+          <h2>רוצים לפתוח תיק נוסף?</h2>
+          <p className="muted">
+            זו גרסת ניסיון, ואפשר לפתוח בה {user.claim_limit === 1 ? "תיק אחד" : `${user.claim_limit} תיקים`}. לתיקים נוספים, לעזרה מעבר
+            למה שהאפליקציה עושה או לכל שאלה, דברו איתנו.
+          </p>
+          <WhatsAppButton message="שלום, אשמח לפתוח תיק נוסף ב-InsurAgent." />
+        </section>
+      ) : (
+        <section className="card new-claim">
+          <h2>תביעה חדשה</h2>
+          <p className="muted">ספרו איזה טיפול עשיתם ואיזה ביטוח יש לכם, בכתב או בהקלטה 🎤. למשל: "היה לי טיפול שורש בכללית סמייל, יש לי ביטוח שיניים בהראל".</p>
+          {busy ? (
+            <p className="working">הסוכן מתחיל לעבוד על התביעה…</p>
+          ) : (
+            <Composer placeholder="מה היה הטיפול?" busy={busy} onSend={startClaim} />
+          )}
+        </section>
+      )}
 
       {tasks.length > 0 && (
         <section>
@@ -68,7 +85,7 @@ export function Home({ user }: { user: User }) {
         </section>
       )}
 
-      {claims.length > 0 && (
+      {claims && claims.length > 0 && (
         <section>
           <h2>התביעות שלי</h2>
           <ul className="list">

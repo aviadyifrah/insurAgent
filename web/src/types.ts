@@ -5,6 +5,8 @@ export interface User {
   id_number: string | null;
   phone: string | null;
   bank_details: string | null;
+  /** Claims this user may open (trial limit). */
+  claim_limit: number;
 }
 
 export interface Claim {
