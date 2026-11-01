@@ -103,6 +103,8 @@ const CLAIM_TYPE_LABELS: Record<string, string> = {
 
 export interface PackageInput {
   claim: {
+    patient_name?: string | null;
+    patient_id_number?: string | null;
     insurer: string | null;
     policy_number: string | null;
     claim_type: string | null;
@@ -133,13 +135,20 @@ export async function buildClaimPackage(input: PackageInput, fontBytes: FontByte
   const contentWidth = 495;
   let y = 790;
 
-  drawRtl(page, "טופס פרטי תביעה להחזר הוצאות", right, y, 18, bold);
+  // Not the insurer's own claim form: a signed summary that goes with it (or stands alone where accepted).
+  drawRtl(page, "דף מקדים לתביעת החזר הוצאות", right, y, 18, bold);
   y -= 22;
   drawRtl(page, `הוכן בתאריך ${new Date().toLocaleDateString("he-IL")} על ידי המבוטח, בעזרת כלי העזר InsurAgent`, right, y, 9, regular);
   y -= 30;
 
   const rows: [string, string | number | null][] = [
     ["שם המבוטח", user.full_name],
+    ...(claim.patient_name
+      ? ([
+          ["שם המטופל", claim.patient_name],
+          ["ת\"ז המטופל", claim.patient_id_number ?? null],
+        ] as [string, string | null][])
+      : []),
     ["מספר ת\"ז", user.id_number],
     ["טלפון", user.phone],
     ["אימייל", user.email],

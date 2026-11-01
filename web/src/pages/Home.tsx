@@ -12,6 +12,13 @@ const STATUS_LABEL: Record<ClaimSummary["status"], string> = {
   submitted: "הוגש",
 };
 
+const OUTCOME_LABEL: Record<NonNullable<ClaimSummary["outcome"]>, string> = {
+  approved: "✅ אושרה",
+  partial: "🟡 אושרה חלקית",
+  rejected: "❌ נדחתה",
+  docs_requested: "📄 ביקשו עוד מסמכים",
+};
+
 export function Home({ user }: { user: User }) {
   const [claims, setClaims] = useState<ClaimSummary[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,7 +101,9 @@ export function Home({ user }: { user: User }) {
                 <div className="grow">
                   <strong>{c.title ?? "תביעה"}</strong>
                   <div className="muted small">
-                    {STATUS_LABEL[c.status]}
+                    {c.outcome
+                      ? OUTCOME_LABEL[c.outcome] + (c.outcome_amount != null ? ` · ${c.outcome_amount.toLocaleString("he-IL")} ₪` : "")
+                      : STATUS_LABEL[c.status]}
                     {c.open_tasks > 0 && ` · ⚠️ ממתין לך: ${c.open_tasks}`}
                   </div>
                   {c.total > 0 && <Progress done={c.done} total={c.total} />}

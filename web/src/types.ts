@@ -7,6 +7,14 @@ export interface User {
   bank_details: string | null;
   /** Claims this user may open (trial limit). */
   claim_limit: number;
+  family: FamilyMember[];
+  is_admin: boolean;
+}
+
+export interface FamilyMember {
+  name: string;
+  id_number: string | null;
+  relation: string | null;
 }
 
 export interface Claim {
@@ -21,6 +29,10 @@ export interface Claim {
   claim_type: string | null;
   amount: number | null;
   status: "collecting" | "ready" | "submitted";
+  patient_name?: string | null;
+  patient_id_number?: string | null;
+  outcome?: "approved" | "partial" | "rejected" | "docs_requested" | null;
+  outcome_amount?: number | null;
   agent_status?: "idle" | "working";
   agent_started_at?: string | null;
   updated_at: string;
@@ -107,4 +119,29 @@ export interface Reminder {
   due_at: string;
   status: "suggested" | "added" | "dismissed";
   created_at: string;
+}
+
+export interface AdminOverview {
+  totals: {
+    users: number;
+    claims: number;
+    submitted: number;
+    with_outcome: number;
+    cost_usd: number;
+    avg_cost_per_claim: number;
+    today_messages: number;
+    today_uploads: number;
+  };
+  users: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    created_at: string;
+    claim_limit: number;
+    claims: number;
+    submitted: number;
+    approved_total: number;
+    cost_usd: number;
+    last_activity: string | null;
+  }[];
 }

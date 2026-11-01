@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { addChat, claimSnapshot } from "../claims";
-import { child, getClaim, getUser, list, now, updateClaim, type DocumentRow } from "../store";
+import crypto from "node:crypto";
+import { firestore } from "../firebase";
+import { recordUsage } from "../costs";
+import { child, claims, getClaim, getUser, list, now, updateClaim, type DocumentRow } from "../store";
 import { SYSTEM_PROMPT } from "./prompt";
 import { executeTool, toolDefinitions } from "./tools";
 
@@ -11,41 +14,93 @@ const MAX_STEPS = 20;
 type MessageParam = Anthropic.Beta.BetaMessageParam;
 type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 
-// One agent run per claim at a time; later events queue behind the current run. This lock lives in
-// memory, so the deployed agent function runs with maxInstances: 1 (see functions.ts).
-const queues = new Map<string, Promise<void>>();
+// Short, and renewed after every model step, so a run that dies frees the claim within minutes.
+const LEASE_MS = 3 * 60 * 1000;
 
-export function runAgent(claimId: string, input: ContentBlockParam[]): Promise<void> {
-  const prev = queues.get(claimId) ?? Promise.resolve();
-  const next = prev.catch(() => {}).then(() => runAgentNow(claimId, input));
-  queues.set(claimId, next);
-  return next.finally(async () => {
-    if (queues.get(claimId) !== next) return;
-    queues.delete(claimId);
-    await updateClaim(claimId, { agent_status: "idle" });
+/**
+ * How an API request hands work to the agent. It must return quickly: an agent turn can take
+ * minutes, longer than Firebase Hosting keeps a request open (60s). The input is queued in the
+ * claim's inbox and screens follow the progress live through Firestore.
+ */
+export type Dispatch = (claimId: string, input: ContentBlockParam[]) => Promise<void>;
+
+async function enqueue(claimId: string, input: ContentBlockParam[]) {
+  await updateClaim(claimId, { agent_status: "working", agent_started_at: now() });
+  await child(claimId, "inbox").add({ content: JSON.stringify(input), created_at: now() });
+}
+
+/** Local development: the Node server keeps running, so it can drain the inbox after responding. */
+export const dispatchInBackground: Dispatch = async (claimId, input) => {
+  await enqueue(claimId, input);
+  drainInbox(claimId).catch((err) => console.error("agent run failed", err));
+};
+
+/** Cloud Functions: CPU stops after the response, so a Firestore-triggered function drains the inbox. */
+export const dispatchToQueue: Dispatch = enqueue;
+
+/** Takes the claim's lease unless another live run holds it. */
+async function acquire(claimId: string, owner: string): Promise<boolean> {
+  return firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(claims.doc(claimId));
+    if (!snap.exists) return false;
+    const until = snap.get("agent_lock_until") as string | null | undefined;
+    if (until && until > now() && snap.get("agent_lock_owner") !== owner) return false;
+    tx.update(snap.ref, { agent_lock_owner: owner, agent_lock_until: new Date(Date.now() + LEASE_MS).toISOString() });
+    return true;
+  });
+}
+
+/** Gives the lease back, but only once the inbox is empty; otherwise the holder keeps going. */
+async function releaseIfEmpty(claimId: string, owner: string): Promise<boolean> {
+  return firestore.runTransaction(async (tx) => {
+    const [snap, pending] = await Promise.all([tx.get(claims.doc(claimId)), tx.get(child(claimId, "inbox").limit(1))]);
+    if (!pending.empty) return false;
+    if (snap.exists && snap.get("agent_lock_owner") === owner) {
+      tx.update(snap.ref, { agent_lock_owner: null, agent_lock_until: null, agent_status: "idle" });
+    }
+    return true;
   });
 }
 
 /**
- * How an API request hands work to the agent. It must return quickly: an agent turn can take
- * minutes, longer than Firebase Hosting keeps a request open (60s). Screens follow the progress
- * live through Firestore.
+ * Runs the claim's queued inputs one at a time. A Firestore lease makes sure only one run per
+ * claim happens across all server instances; whoever holds it drains everything queued meanwhile.
+ * Inputs stranded by a crash are picked up by the sweeper (see sweepStranded).
  */
-export type Dispatch = (claimId: string, input: ContentBlockParam[]) => Promise<void>;
+export async function drainInbox(claimId: string): Promise<void> {
+  const owner = crypto.randomUUID();
+  if (!(await acquire(claimId, owner))) return;
+  for (;;) {
+    const next = (await child(claimId, "inbox").orderBy("created_at").limit(1).get()).docs[0];
+    if (!next) {
+      if (await releaseIfEmpty(claimId, owner)) return;
+      continue;
+    }
+    try {
+      await runAgentNow(claimId, JSON.parse(next.get("content")), () => acquire(claimId, owner));
+    } catch (err) {
+      // Drop the input rather than retry a run that keeps failing; the user can send again.
+      console.error(`agent run failed (claim ${claimId})`, err);
+    }
+    await next.ref.delete();
+    if (!(await acquire(claimId, owner))) return; // renew the lease; stop if another run took it over
+  }
+}
 
-const markWorking = (claimId: string) => updateClaim(claimId, { agent_status: "working", agent_started_at: now() });
+/** Retries inputs left in an inbox (crash, timeout) and clears "working" on claims with nothing queued. */
+export async function sweepStranded() {
+  const stale = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const stranded = await firestore.collectionGroup("inbox").where("created_at", "<", stale).get();
+  const claimIds = [...new Set(stranded.docs.map((d) => d.ref.parent.parent!.id))];
+  for (const id of claimIds) await drainInbox(id);
 
-/** Local development: the Node server keeps running, so the agent can run after the response. */
-export const dispatchInBackground: Dispatch = async (claimId, input) => {
-  await markWorking(claimId);
-  runAgent(claimId, input).catch((err) => console.error("agent run failed", err));
-};
-
-/** Cloud Functions: CPU stops after the response, so a Firestore-triggered function does the work. */
-export const dispatchToQueue: Dispatch = async (claimId, input) => {
-  await markWorking(claimId);
-  await child(claimId, "inbox").add({ content: JSON.stringify(input), created_at: now() });
-};
+  const stuck = await claims.where("agent_status", "==", "working").where("agent_started_at", "<", stale).get();
+  for (const doc of stuck.docs) {
+    const lockUntil = doc.get("agent_lock_until") as string | null | undefined;
+    const pending = await child(doc.id, "inbox").limit(1).get();
+    if (pending.empty && (!lockUntil || lockUntil < now())) await doc.ref.update({ agent_status: "idle" });
+  }
+}
 
 /**
  * What the agent learns about uploaded documents: the analysis extracted at upload time, not the
@@ -77,7 +132,8 @@ async function saveTurn(claimId: string, seq: number, message: MessageParam) {
     .create({ seq, role: message.role, content: JSON.stringify(message.content), created_at: now() });
 }
 
-async function runAgentNow(claimId: string, input: ContentBlockParam[]) {
+/** One agent run. `renewLease` is called after each model step; a false return means another run took over. */
+async function runAgentNow(claimId: string, input: ContentBlockParam[], renewLease: () => Promise<boolean> = async () => true) {
   const claim = (await getClaim(claimId))!;
   const user = (await getUser(claim.user_id))!;
 
@@ -124,12 +180,14 @@ async function runAgentNow(claimId: string, input: ContentBlockParam[]) {
         fallbacks: "default",
       });
     } catch (err) {
-      console.error("agent API error", err);
+      console.error(`agent API error (claim ${claimId})`, err);
       await addChat(claim, "assistant", "משהו השתבש אצלי בצד. נסה לשלוח שוב בעוד רגע.");
       return;
     }
 
+    if (!(await renewLease())) return;
     await push({ role: "assistant", content: response.content });
+    await recordUsage({ userId: claim.user_id, claimId, model: response.model, usage: response.usage });
 
     const text = response.content
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")

@@ -72,6 +72,9 @@ const tools = [
       policy_number: z.string().optional(),
       claim_type: z.string().optional().describe("dental | optics | paramedical | consultation | other"),
       amount: z.number().optional().describe("Amount paid in ILS"),
+      patient_name: z.string().optional().describe("Who was treated, if not the account holder (e.g. a child)"),
+      patient_id_number: z.string().optional(),
+      patient_relation: z.string().optional().describe("e.g. בן, בת, בן/בת זוג"),
     }),
     run: async (input, ctx) => {
       await updateClaim(ctx.claim.id, input);
@@ -215,7 +218,7 @@ const tools = [
     schema: z.object({}),
     run: async (_input, ctx) => {
       const u = (await getUser(ctx.user.id))!;
-      return { full_name: u.full_name, id_number: u.id_number, phone: u.phone, email: u.email, bank_details: u.bank_details };
+      return { full_name: u.full_name, id_number: u.id_number, phone: u.phone, email: u.email, bank_details: u.bank_details, family: u.family ?? [] };
     },
   }),
 
@@ -227,9 +230,18 @@ const tools = [
       id_number: z.string().optional(),
       phone: z.string().optional(),
       bank_details: z.string().optional().describe("Bank, branch and account number as one string"),
+      add_family_member: z
+        .object({ name: z.string(), id_number: z.string().nullable().default(null), relation: z.string().nullable().default(null) })
+        .optional()
+        .describe("Save a family member (child, spouse) so future claims for them don't ask again"),
     }),
     run: async (input, ctx) => {
-      await users.doc(ctx.user.id).update(input);
+      const { add_family_member, ...fields } = input;
+      if (add_family_member) {
+        const family = ((await getUser(ctx.user.id))?.family ?? []).filter((m) => m.name !== add_family_member.name);
+        await users.doc(ctx.user.id).update({ family: [...family, add_family_member].slice(-12) });
+      }
+      if (Object.values(fields).some((v) => v !== undefined)) await users.doc(ctx.user.id).update(fields);
       return ok();
     },
   }),

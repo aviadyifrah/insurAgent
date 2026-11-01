@@ -7,6 +7,7 @@ import { Composer } from "../components/Composer";
 import { Disclaimer } from "../components/Disclaimer";
 import { DocLink } from "../components/DocLink";
 import { EmailModal, TaskCard } from "../components/TaskCard";
+import { OutcomeCard } from "../components/OutcomeCard";
 import { ReminderCard, reminderDay } from "../components/ReminderCard";
 import { downloadClaimPackage } from "../claimPackage";
 import type { EmailDraft, Requirement, User } from "../types";
@@ -101,6 +102,34 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
   const send = (text: string, documentIds: string[]) => act(() => api.sendMessage(claimId, text, documentIds));
   const markSubmitted = () => act(() => api.markSubmitted(claimId));
 
+  async function deleteClaim() {
+    if (!confirm("למחוק את התיק וכל המסמכים שבו? אי אפשר לבטל את זה.")) return;
+    setBusy(true);
+    try {
+      await api.deleteClaim(claimId);
+      navigate("/");
+    } catch (err) {
+      alert(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  /** Uploads a new file for a requirement; the agent checks it and attaches it. */
+  function replaceDocument(requirementId: string, input: HTMLInputElement) {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    return act(async () => {
+      const doc = await api.upload(file, claimId);
+      await api.replaceDocument(claimId, requirementId, doc.id);
+    });
+  }
+
+  function deleteDocument(documentId: string, filename: string) {
+    if (!confirm(`להסיר את "${filename}" מהתיק?`)) return;
+    return act(() => api.deleteDocument(documentId));
+  }
+
   async function downloadPackage() {
     setBusy(true);
     try {
@@ -123,6 +152,16 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
           <h1>{claim.title ?? "תביעה חדשה"}</h1>
           {required.length > 0 && <Progress done={done} total={required.length} />}
         </div>
+        <details className="menu">
+          <summary className="icon-btn" aria-label="אפשרויות">
+            ⋯
+          </summary>
+          <div className="menu-list">
+            <button onClick={deleteClaim} disabled={busy}>
+              🗑 מחיקת התיק
+            </button>
+          </div>
+        </details>
       </header>
       <Disclaimer />
 
@@ -143,6 +182,8 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
           </div>
         </section>
       )}
+
+      {claim.status === "submitted" && <OutcomeCard claimId={claimId} claim={claim} act={act} />}
 
       {openTasks.length > 0 && (
         <section className="tasks">
@@ -191,8 +232,14 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
                   <div className="small muted">{r.note ?? REQ_STATUS[r.status].label}</div>
                 </div>
                 {docById.get(r.document_id ?? "") && (
-                  <span className="small">
+                  <span className="small doc-actions">
                     <DocLink doc={docById.get(r.document_id!)!}>צפה</DocLink>
+                    {docById.get(r.document_id!)!.kind !== "signature" && claim.status !== "submitted" && (
+                      <label className="link-like">
+                        החלף
+                        <input type="file" accept="image/*,application/pdf" hidden onChange={(e) => replaceDocument(r.id, e.target)} />
+                      </label>
+                    )}
                   </span>
                 )}
               </li>
@@ -237,6 +284,11 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
                 <li key={d.id}>
                   <DocLink doc={d}>📎 {d.filename}</DocLink>
                   {d.claim_id !== claim.id && <span className="muted small"> (מתביעה קודמת)</span>}
+                  {d.claim_id === claim.id && claim.status !== "submitted" && (
+                    <button className="link small" onClick={() => deleteDocument(d.id, d.filename)} disabled={busy}>
+                      הסר
+                    </button>
+                  )}
                   {d.analysis?.summary_he && <div className="small muted">{d.analysis.summary_he}</div>}
                 </li>
               ))}

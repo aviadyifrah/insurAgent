@@ -1,4 +1,4 @@
-import type { Claim, ClaimSummary, DocumentRow, User } from "./types";
+import type { AdminOverview, Claim, ClaimSummary, DocumentRow, User } from "./types";
 import { documentStore } from "./documentStore";
 import { auth } from "./firebase";
 
@@ -15,6 +15,7 @@ export class ApiError extends Error {
 export function errorMessage(err: unknown, fallback = "משהו השתבש. אפשר לנסות שוב."): string {
   if (err instanceof ApiError && err.message === "daily_limit") return "הגעת למכסה היומית. אפשר להמשיך מחר.";
   if (err instanceof ApiError && err.message === "service_busy") return "השירות עמוס היום. אפשר לנסות שוב מחר.";
+  if (err instanceof ApiError && err.message === "claim_limit") return "בגרסת הניסיון אפשר לפתוח תיק אחד. לתיק נוסף אפשר לפנות אלינו בוואטסאפ.";
   return fallback;
 }
 
@@ -83,5 +84,29 @@ export const api = {
   },
   setReminder: (claimId: string, reminderId: string, status: "added" | "dismissed") =>
     post<{ ok: boolean }>(`/claims/${claimId}/reminders/${reminderId}`, { status }),
+  patchClaim: (claimId: string, patch: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/claims/${claimId}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  setOutcome: (claimId: string, outcome: string, amount: number | null, note: string) =>
+    post<{ ok: boolean }>(`/claims/${claimId}/outcome`, { outcome, amount, note }),
+  replaceDocument: (claimId: string, requirementId: string, documentId: string) =>
+    post<{ ok: boolean }>(`/claims/${claimId}/requirements/${requirementId}/replace`, { document_id: documentId }),
+
+  /** Deletes on the server, then removes the files kept on this device. */
+  async deleteDocument(documentId: string) {
+    const r = await request<{ storage_ref: string }>(`/documents/${documentId}`, { method: "DELETE" });
+    await documentStore.remove(r.storage_ref).catch(() => {});
+  },
+  async deleteClaim(claimId: string) {
+    const r = await request<{ storage_refs: string[] }>(`/claims/${claimId}`, { method: "DELETE" });
+    await Promise.all(r.storage_refs.map((ref) => documentStore.remove(ref).catch(() => {})));
+  },
+  async deleteAccount() {
+    const r = await request<{ storage_refs: string[] }>("/me", { method: "DELETE" });
+    await Promise.all(r.storage_refs.map((ref) => documentStore.remove(ref).catch(() => {})));
+  },
+
+  adminOverview: () => request<AdminOverview>("/admin/overview"),
+  adminSetLimit: (uid: string, claim_limit: number) => post<{ ok: boolean }>(`/admin/users/${uid}`, { claim_limit }),
+
   emailSent: (claimId: string, emailId: string) => post<{ ok: boolean }>(`/claims/${claimId}/emails/${emailId}/sent`),
 };

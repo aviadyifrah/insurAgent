@@ -6,3 +6,4 @@ deploy/
 .firebase/
 .emulator-data/
 *-debug.log
+tests/e2e/.output/

@@ -28,8 +28,12 @@ export const templates: ClaimTemplate[] = fs
   .filter((f) => f.endsWith(".json"))
   .map((f) => JSON.parse(fs.readFileSync(path.join(KNOWLEDGE_DIR, f), "utf8")) as ClaimTemplate);
 
+/** The insurer's template for this claim type, else the insurer's general one (claim_type "*"). */
 export function findTemplate(insurerKey: string, claimType: string): ClaimTemplate | undefined {
-  return templates.find((t) => t.insurer_key === insurerKey && t.claim_type === claimType);
+  return (
+    templates.find((t) => t.insurer_key === insurerKey && t.claim_type === claimType) ??
+    templates.find((t) => t.insurer_key === insurerKey && t.claim_type === "*")
+  );
 }
 
 export function templateById(id: string): ClaimTemplate | undefined {

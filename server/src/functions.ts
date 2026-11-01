@@ -4,8 +4,7 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { createApp } from "./app";
-import { dispatchToQueue, runAgent } from "./agent/agent";
-import { sendDueReminders } from "./reminders";
+import { dispatchToQueue, drainInbox, sweepStranded } from "./agent/agent";
 
 // Must be compatible with the Firestore location (europe-west1 works with eur3 and europe-west1).
 const REGION = "europe-west1";
@@ -45,7 +44,7 @@ export const api = onRequest(
   },
 );
 
-/** Runs the agent for each queued input. */
+/** Runs the agent for queued input. A Firestore lease keeps it to one run per claim across instances. */
 export const agent = onDocumentCreated(
   {
     document: "claims/{claimId}/inbox/{inputId}",
@@ -53,18 +52,18 @@ export const agent = onDocumentCreated(
     secrets: [anthropicKey],
     timeoutSeconds: 540, // an agent turn with several tool calls can take minutes
     memory: "512MiB",
-    // The per-claim agent lock is in memory, so every run must land on the same instance.
-    maxInstances: 1,
+    maxInstances: 10, // a cost ceiling, not a correctness requirement
     concurrency: 20,
   },
   async (event) => {
-    const data = event.data?.data();
-    if (!data) return;
-    await runAgent(event.params.claimId, JSON.parse(data.content));
-    await event.data!.ref.delete();
+    await drainInbox(event.params.claimId);
   },
 );
 
-export const reminders = onSchedule({ schedule: "every 60 minutes", region: REGION, timeZone: "Asia/Jerusalem" }, async () => {
-  await sendDueReminders();
-});
+/** Recovers agent input stranded by a crash or timeout. */
+export const sweeper = onSchedule(
+  { schedule: "every 10 minutes", region: REGION, secrets: [anthropicKey], timeoutSeconds: 540, memory: "512MiB" },
+  async () => {
+    await sweepStranded();
+  },
+);

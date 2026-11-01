@@ -95,39 +95,107 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   );
 }
 
+type FieldKey = "full_name" | "id_number" | "bank_details" | "patient_name" | "patient_id_number" | "treatment" | "provider" | "treatment_date" | "amount" | "policy_number";
+
+/** The details that go on the cover page; all editable, so mistakes are fixed before signing. */
+const FIELDS: { key: FieldKey; label: string; owner: "user" | "claim"; ltr?: boolean; patientOnly?: boolean }[] = [
+  { key: "full_name", label: "שם המבוטח", owner: "user" },
+  { key: "id_number", label: "ת\"ז המבוטח", owner: "user", ltr: true },
+  { key: "patient_name", label: "שם המטופל", owner: "claim", patientOnly: true },
+  { key: "patient_id_number", label: "ת\"ז המטופל", owner: "claim", ltr: true, patientOnly: true },
+  { key: "treatment", label: "הטיפול", owner: "claim" },
+  { key: "provider", label: "הגורם המטפל", owner: "claim" },
+  { key: "treatment_date", label: "תאריך הטיפול", owner: "claim", ltr: true },
+  { key: "amount", label: "סכום ששולם (₪)", owner: "claim", ltr: true },
+  { key: "policy_number", label: "מספר פוליסה", owner: "claim", ltr: true },
+  { key: "bank_details", label: "חשבון להחזר", owner: "user" },
+];
+
 function SignModal({ view, onClose, onSign }: { view: ClaimView; onClose: () => void; onSign: (png: string) => void }) {
   const [png, setPng] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  useEffect(() => {
-    api.me().then(setUser);
-  }, []);
+  const [values, setValues] = useState<Record<FieldKey, string> | null>(null);
+  const [initial, setInitial] = useState<Record<FieldKey, string> | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const c = view.claim;
-  const rows: [string, string | number | null | undefined][] = [
-    ["שם המבוטח", user?.full_name],
-    ["ת\"ז", user?.id_number],
-    ["חברת ביטוח", c.insurer],
-    ["הטיפול", c.treatment],
-    ["הגורם המטפל", c.provider],
-    ["תאריך", c.treatment_date],
-    ["סכום", c.amount != null ? `${c.amount} ₪` : null],
-    ["חשבון להחזר", user?.bank_details],
-  ];
+  const fields = FIELDS.filter((f) => !f.patientOnly || c.patient_name);
+
+  useEffect(() => {
+    api.me().then((u: User) => {
+      const v = {
+        full_name: u.full_name ?? "",
+        id_number: u.id_number ?? "",
+        bank_details: u.bank_details ?? "",
+        patient_name: c.patient_name ?? "",
+        patient_id_number: c.patient_id_number ?? "",
+        treatment: c.treatment ?? "",
+        provider: c.provider ?? "",
+        treatment_date: c.treatment_date ?? "",
+        amount: c.amount != null ? String(c.amount) : "",
+        policy_number: c.policy_number ?? "",
+      };
+      setValues(v);
+      setInitial(v);
+    });
+  }, []);
+
+  async function confirm() {
+    if (!png || !values || !initial) return;
+    setSaving(true);
+    try {
+      const changed = fields.filter((f) => values[f.key] !== initial[f.key]);
+      const userPatch = Object.fromEntries(changed.filter((f) => f.owner === "user").map((f) => [f.key, values[f.key]]));
+      const claimPatch = Object.fromEntries(
+        changed
+          .filter((f) => f.owner === "claim")
+          .map((f) => [f.key, f.key === "amount" ? (values.amount ? Number(values.amount.replace(/[^\d.]/g, "")) : null) : values[f.key]]),
+      );
+      if (Object.keys(userPatch).length) await api.updateMe(userPatch);
+      if (Object.keys(claimPatch).length) await api.patchClaim(c.id, claimPatch);
+      onSign(png);
+    } catch {
+      alert("לא הצלחנו לשמור את הפרטים. אפשר לנסות שוב.");
+      setSaving(false);
+    }
+  }
+
   return (
-    <Modal title="חתימה על טופס התביעה" onClose={onClose}>
-      <dl className="summary">
-        {rows.map(([k, v]) => (
-          <div key={k}>
-            <dt>{k}</dt>
-            <dd>{v ?? "—"}</dd>
-          </div>
-        ))}
-      </dl>
+    <Modal title="חתימה על הדף המקדים" onClose={onClose}>
+      {!values ? (
+        <p className="muted">טוען…</p>
+      ) : editing ? (
+        <div className="edit-fields">
+          {fields.map((f) => (
+            <label key={f.key}>
+              {f.label}
+              <input value={values[f.key]} dir={f.ltr ? "ltr" : undefined} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })} />
+            </label>
+          ))}
+          <button className="wide" onClick={() => setEditing(false)}>
+            סיום עריכה
+          </button>
+        </div>
+      ) : (
+        <>
+          <dl className="summary">
+            {fields.map((f) => (
+              <div key={f.key}>
+                <dt>{f.label}</dt>
+                <dd>{values[f.key] || "—"}</dd>
+              </div>
+            ))}
+          </dl>
+          <button className="link" onClick={() => setEditing(true)}>
+            ✏️ משהו לא נכון? עריכת הפרטים
+          </button>
+        </>
+      )}
       <p className="small">
         אני מצהיר/ה כי הפרטים בטופס ובמסמכים המצורפים נכונים ומלאים, וכי ההוצאה שבגינה מוגשת התביעה שולמה על ידי.
       </p>
       <SignaturePad onChange={setPng} />
-      <button className="primary wide" disabled={!png} onClick={() => png && onSign(png)}>
-        אישור וחתימה
+      <button className="primary wide" disabled={!png || !values || saving || editing} onClick={confirm}>
+        {saving ? "שומר…" : "אישור וחתימה"}
       </button>
     </Modal>
   );

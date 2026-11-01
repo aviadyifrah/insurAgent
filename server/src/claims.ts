@@ -15,16 +15,6 @@ import {
   type Task,
 } from "./store";
 
-// Reminder escalation: 1, 3, 7 units after creation, then every 7. One unit is a day unless
-// REMINDER_UNIT_MS is set (e.g. 60000 to watch the nagging happen in minutes during development).
-const REMINDER_UNIT_MS = Number(process.env.REMINDER_UNIT_MS ?? 24 * 60 * 60 * 1000);
-const REMINDER_STEPS = [1, 3, 7];
-
-export function nextReminderAt(reminderCount: number, from = Date.now()): string {
-  const step = REMINDER_STEPS[reminderCount] ?? REMINDER_STEPS[REMINDER_STEPS.length - 1];
-  return new Date(from + step * REMINDER_UNIT_MS).toISOString();
-}
-
 export async function createTask(
   claim: Claim,
   t: {
@@ -44,9 +34,6 @@ export async function createTask(
     title: t.title,
     instructions: t.instructions,
     status: "open",
-    reminder_count: 0,
-    next_reminder_at: nextReminderAt(0),
-    last_reminded_at: null,
     created_at: now(),
     completed_at: null,
   });
@@ -55,7 +42,7 @@ export async function createTask(
 }
 
 export async function closeTask(claimId: string, taskId: string, status: "done" | "cancelled") {
-  await child(claimId, "tasks").doc(taskId).update({ status, completed_at: now(), next_reminder_at: null });
+  await child(claimId, "tasks").doc(taskId).update({ status, completed_at: now() });
 }
 
 export async function addChat(claim: Claim, role: ChatMessage["role"], text: string) {
@@ -92,8 +79,11 @@ export async function claimSnapshot(claim: Claim): Promise<string> {
       claim_type: claim.claim_type,
       amount: claim.amount,
       template_id: claim.template_id,
+      patient: claim.patient_name ? { name: claim.patient_name, id_number: claim.patient_id_number ?? null, relation: claim.patient_relation ?? null } : "the account holder",
       status: claim.status,
+      outcome: claim.outcome ?? null,
     },
+    family_members: (user?.family ?? []).map((m) => ({ name: m.name, relation: m.relation, has_id_number: !!m.id_number })),
     profile_complete: {
       full_name: !!user?.full_name,
       id_number: !!user?.id_number,
@@ -111,7 +101,7 @@ export async function claimSnapshot(claim: Claim): Promise<string> {
     })),
     open_tasks: v.tasks
       .filter((t) => t.status === "open")
-      .map((t) => ({ id: t.id, type: t.type, title: t.title, requirement_id: t.requirement_id, reminders_sent: t.reminder_count })),
+      .map((t) => ({ id: t.id, type: t.type, title: t.title, requirement_id: t.requirement_id })),
     email_drafts: v.emails.map((e) => ({ id: e.id, purpose: e.purpose, to: e.to_address, subject: e.subject, status: e.status })),
     reminders: v.reminders.map((r) => ({ title: r.title, day: r.due_at.slice(0, 10), status: r.status })),
     documents: v.documents.map((d) => ({ id: d.id, kind: d.kind, filename: d.filename, reusable: d.reusable, from_this_claim: d.claim_id === claim.id })),

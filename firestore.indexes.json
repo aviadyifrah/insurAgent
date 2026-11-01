@@ -1,13 +1,22 @@
 {
   "indexes": [
     {
-      "collectionGroup": "tasks",
-      "queryScope": "COLLECTION_GROUP",
+      "collectionGroup": "claims",
+      "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "next_reminder_at", "order": "ASCENDING" }
+        { "fieldPath": "agent_status", "order": "ASCENDING" },
+        { "fieldPath": "agent_started_at", "order": "ASCENDING" }
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "inbox",
+      "fieldPath": "created_at",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
 }

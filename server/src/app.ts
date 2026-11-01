@@ -3,10 +3,11 @@ import path from "node:path";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { auth } from "./firebase";
+import { auth, firestore } from "./firebase";
 import { addChat, claimView, closeTask } from "./claims";
 import { documentBlocks, type Dispatch } from "./agent/agent";
-import { ANALYZABLE_MIME, analyzeDocument } from "./agent/extract";
+import { ANALYZABLE_MIME, readDocument } from "./agent/extract";
+import { recordUsage } from "./costs";
 import { consumeQuota } from "./quota";
 import {
   add,
@@ -27,6 +28,7 @@ import {
   type Claim,
   type DocumentRow,
   type EmailDraft,
+  type Requirement,
   type Task,
   type User,
 } from "./store";
@@ -43,6 +45,12 @@ export interface AppConfig {
 }
 
 type Env = { Variables: { uid: string; email: string; user: User } };
+
+const familyMember = z.object({
+  name: z.string().min(1).max(100),
+  id_number: z.string().max(20).nullable().default(null),
+  relation: z.string().max(40).nullable().default(null),
+});
 
 export function createApp(config: AppConfig) {
   const api = new Hono<Env>();
@@ -76,7 +84,7 @@ export function createApp(config: AppConfig) {
   api.get("/me", async (c) => {
     const user = await getUser(c.get("uid"));
     if (user?.consent_version !== CONSENT_VERSION) return c.json({ error: "consent_required" }, 403);
-    return c.json({ ...user, claim_limit: claimLimit(user) });
+    return c.json(profileOf(user));
   });
 
   api.post("/consent", async (c) => {
@@ -88,7 +96,7 @@ export function createApp(config: AppConfig) {
     const code = config.accessCode();
     if (!existing && code && !safeEqual(access_code.trim(), code)) return c.json({ error: "bad_access_code" }, 403);
     const record = { consent_version: CONSENT_VERSION, consent_at: now(), consent_given: consent };
-    if (existing) await users.doc(uid).update(record);
+    if (existing) await users.doc(uid).set({ email: c.get("email"), ...record }, { merge: true });
     else
       await users.doc(uid).set({
         email: c.get("email"),
@@ -96,11 +104,11 @@ export function createApp(config: AppConfig) {
         id_number: null,
         phone: null,
         bank_details: null,
+        family: [],
         created_at: now(),
         ...record,
       });
-    const created = (await getUser(uid))!;
-    return c.json({ ...created, claim_limit: claimLimit(created) });
+    return c.json(profileOf((await getUser(uid))!));
   });
 
   api.use("*", async (c, next) => {
@@ -115,21 +123,36 @@ export function createApp(config: AppConfig) {
   api.put("/me", async (c) => {
     const patch = z
       .object({
-        full_name: z.string().optional(),
-        id_number: z.string().optional(),
-        phone: z.string().optional(),
-        bank_details: z.string().optional(),
+        // Fields the user hasn't filled in yet come back as null.
+        full_name: z.string().max(100).nullish(),
+        id_number: z.string().max(20).nullish(),
+        phone: z.string().max(30).nullish(),
+        bank_details: z.string().max(200).nullish(),
+        family: z.array(familyMember).max(12).optional(),
       })
       .parse(await c.req.json());
     await users.doc(c.get("user").id).update(patch);
-    const updated = (await getUser(c.get("user").id))!;
-    return c.json({ ...updated, claim_limit: claimLimit(updated) });
+    return c.json(profileOf((await getUser(c.get("user").id))!));
+  });
+
+  /** Deletes the account and everything stored about it. Returns the device files to remove. */
+  api.delete("/me", async (c) => {
+    const user = c.get("user");
+    const mine = await list<Claim>(claims.where("user_id", "==", user.id));
+    for (const claim of mine) await firestore.recursiveDelete(claims.doc(claim.id));
+    const docs = await list<DocumentRow>(documents.where("user_id", "==", user.id));
+    await Promise.all(docs.map((d) => documents.doc(d.id).delete()));
+    const usage = await firestore.collection("usage").where("user_id", "==", user.id).get();
+    await Promise.all(usage.docs.map((d) => d.ref.delete()));
+    await users.doc(user.id).delete();
+    await auth.deleteUser(user.id).catch((err) => console.error("deleting auth user failed", err));
+    return c.json({ ok: true, storage_refs: docs.map((d) => d.storage_ref) });
   });
 
   // --- Claims ---
 
   api.get("/claims", async (c) => {
-    const mine = await list<Claim>(claims.where("user_id", "==", c.get("user").id));
+    const mine = (await list<Claim>(claims.where("user_id", "==", c.get("user").id))).filter((cl) => cl.engaged !== false);
     const summaries = await Promise.all(
       mine.map(async (claim) => {
         const [reqs, open] = await Promise.all([
@@ -152,13 +175,12 @@ export function createApp(config: AppConfig) {
 
   const messageInput = z.object({ text: z.string().default(""), document_ids: z.array(z.string()).default([]) });
 
-  // Creates an empty claim. The client then opens the claim screen and posts the first message
-  // there, so the user watches the agent work live instead of waiting on this request.
+  // Hands back an empty claim (reusing one the user opened but never wrote in). The client then
+  // opens the claim screen and posts the first message there, so the user watches the agent work.
   api.post("/claims", async (c) => {
     const user = c.get("user");
-    // Trial: a fixed number of claims per user; more is arranged with the team (see claimLimit).
-    const existing = (await claims.where("user_id", "==", user.id).count().get()).data().count;
-    if (existing >= claimLimit(user)) return c.json({ error: "claim_limit" }, 403);
+    const empty = await list<Claim>(claims.where("user_id", "==", user.id).where("engaged", "==", false).limit(1));
+    if (empty[0]) return c.json(empty[0]);
     const claim = await add<Claim>(claims, {
       user_id: user.id,
       title: "תביעה חדשה",
@@ -173,6 +195,7 @@ export function createApp(config: AppConfig) {
       amount: null,
       template_id: null,
       status: "collecting",
+      engaged: false,
       agent_status: "idle",
       agent_started_at: null,
       created_at: now(),
@@ -183,11 +206,48 @@ export function createApp(config: AppConfig) {
 
   api.get("/claims/:id", async (c) => c.json(await claimView(await claimOr404(c))));
 
+  /** Corrections the user makes before signing (the agent records these otherwise). */
+  api.patch("/claims/:id", async (c) => {
+    const claim = await claimOr404(c);
+    const patch = z
+      .object({
+        treatment: z.string().max(200).optional(),
+        provider: z.string().max(200).optional(),
+        treatment_date: z.string().max(20).optional(),
+        policy_number: z.string().max(50).optional(),
+        amount: z.number().nonnegative().nullable().optional(),
+        patient_name: z.string().max(100).nullable().optional(),
+        patient_id_number: z.string().max(20).nullable().optional(),
+      })
+      .parse(await c.req.json());
+    await updateClaim(claim.id, patch);
+    return c.json({ ok: true });
+  });
+
+  /** Deletes a claim and everything under it. Returns the device files to remove. */
+  api.delete("/claims/:id", async (c) => {
+    const claim = await claimOr404(c);
+    const docs = await list<DocumentRow>(documents.where("user_id", "==", claim.user_id).where("claim_id", "==", claim.id));
+    // Reusable documents (ID copy, bank confirmation) belong to the user, not the claim; keep them.
+    const owned = docs.filter((d) => !d.reusable);
+    await Promise.all([
+      ...owned.map((d) => documents.doc(d.id).delete()),
+      ...docs.filter((d) => d.reusable).map((d) => documents.doc(d.id).update({ claim_id: null })),
+    ]);
+    await firestore.recursiveDelete(claims.doc(claim.id));
+    return c.json({ ok: true, storage_refs: owned.map((d) => d.storage_ref) });
+  });
+
   api.post("/claims/:id/messages", async (c) => {
     const user = c.get("user");
     const claim = await claimOr404(c);
     const { text, document_ids } = messageInput.parse(await c.req.json());
     const docs = await ownedDocuments(user.id, document_ids);
+    if (claim.engaged === false) {
+      // The first message is what makes a claim count toward the trial limit.
+      if ((await engagedClaimCount(user.id)) >= claimLimit(user)) return c.json({ error: "claim_limit" }, 403);
+      await updateClaim(claim.id, { engaged: true });
+    }
     await consumeQuota(user.id, "messages");
     await attachToClaim(docs, claim.id);
     const attached = docs.map((d) => `📎 ${d.filename}`).join("\n");
@@ -215,6 +275,36 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
+  /** What the insurer answered. Asking for more documents reopens the claim for the agent. */
+  api.post("/claims/:id/outcome", async (c) => {
+    const claim = await claimOr404(c);
+    const { outcome, amount, note } = z
+      .object({
+        outcome: z.enum(["approved", "partial", "rejected", "docs_requested"]),
+        amount: z.number().nonnegative().nullable().default(null),
+        note: z.string().max(1000).default(""),
+      })
+      .parse(await c.req.json());
+    await updateClaim(claim.id, { outcome, outcome_amount: amount, outcome_at: now() });
+    const label = {
+      approved: `✅ התביעה אושרה${amount != null ? `: ${amount} ₪` : ""}`,
+      partial: `🟡 התביעה אושרה חלקית${amount != null ? `: ${amount} ₪` : ""}`,
+      rejected: "❌ התביעה נדחתה",
+      docs_requested: "📄 חברת הביטוח ביקשה מסמכים נוספים",
+    }[outcome];
+    await addChat(claim, "event", note ? `${label}\n${note}` : label);
+    if (outcome === "docs_requested") {
+      await updateClaim(claim.id, { status: "collecting" });
+      await config.dispatch(claim.id, [
+        {
+          type: "text",
+          text: `<app_event type="insurer_requested_documents">The insurer asked for more documents after submission. What the user says they asked for: ${note || "(not specified; ask the user)"}. Add the needed requirements, create tasks, and help the user complete and resubmit.</app_event>`,
+        },
+      ]);
+    }
+    return c.json({ ok: true });
+  });
+
   // The user added a suggested reminder to their calendar, or declined it.
   api.post("/claims/:id/reminders/:reminderId", async (c) => {
     const claim = await claimOr404(c);
@@ -238,14 +328,16 @@ export function createApp(config: AppConfig) {
     if (file.size > MAX_UPLOAD_BYTES) throw new HTTPException(400, { message: "file too large" });
     await consumeQuota(user.id, "uploads");
     const { storage, storage_ref } = storageInput.parse(body);
-    const claimId = typeof body.claim_id === "string" && body.claim_id ? (await claimOr404Id(body.claim_id, user.id)) : null;
+    const claimId = typeof body.claim_id === "string" && body.claim_id ? await claimOr404Id(body.claim_id, user.id) : null;
 
     // We read the file once to extract its details; it is never stored on the server.
     let analysis = null;
     try {
-      analysis = await analyzeDocument(Buffer.from(await file.arrayBuffer()), file.type);
+      const reads = await readDocument(Buffer.from(await file.arrayBuffer()), file.type);
+      analysis = reads.at(-1)!.analysis;
+      await Promise.all(reads.map((r) => recordUsage({ userId: user.id, claimId, model: r.model, usage: r.usage })));
     } catch (err) {
-      console.error("document analysis failed", err instanceof Error ? err.message : err);
+      console.error("document analysis failed", err);
     }
     const doc = await add<DocumentRow>(documents, {
       user_id: user.id,
@@ -260,6 +352,49 @@ export function createApp(config: AppConfig) {
       created_at: now(),
     });
     return c.json(doc);
+  });
+
+  /** Removes a document; requirements it satisfied go back to missing. Returns the device file to remove. */
+  api.delete("/documents/:id", async (c) => {
+    const user = c.get("user");
+    const [doc] = await ownedDocuments(user.id, [c.req.param("id")]);
+    if (doc.claim_id) {
+      const claim = (await getClaim(doc.claim_id, user.id))!;
+      const linked = await list<Requirement>(child(claim.id, "requirements").where("document_id", "==", doc.id));
+      await Promise.all(linked.map((r) => child(claim.id, "requirements").doc(r.id).update({ status: "missing", document_id: null })));
+      await addChat(claim, "event", `🗑 הוסר מסמך: ${doc.filename}`);
+      if (linked.length > 0) {
+        await config.dispatch(claim.id, [
+          {
+            type: "text",
+            text: `<app_event type="document_removed" document_id="${doc.id}">The user removed the document "${doc.filename}". These requirements are missing again: ${linked.map((r) => r.title).join(", ")}.</app_event>`,
+          },
+        ]);
+      }
+    }
+    await documents.doc(doc.id).delete();
+    return c.json({ ok: true, storage_ref: doc.storage_ref });
+  });
+
+  /** The user swapped the document behind a requirement; the agent checks the new one. */
+  api.post("/claims/:id/requirements/:requirementId/replace", async (c) => {
+    const user = c.get("user");
+    const claim = await claimOr404(c);
+    const requirement = await getDoc<Requirement>(child(claim.id, "requirements").doc(c.req.param("requirementId")));
+    if (!requirement) throw new HTTPException(404, { message: "requirement not found" });
+    const { document_id } = z.object({ document_id: z.string() }).parse(await c.req.json());
+    const docs = await ownedDocuments(user.id, [document_id]);
+    await attachToClaim(docs, claim.id);
+    await child(claim.id, "requirements").doc(requirement.id).update({ status: "missing", document_id: null });
+    await addChat(claim, "event", `🔄 הוחלף מסמך: ${requirement.title}`);
+    await config.dispatch(claim.id, [
+      ...documentBlocks(docs),
+      {
+        type: "text",
+        text: `<app_event type="document_replaced" requirement_id="${requirement.id}">The user replaced the document for "${requirement.title}" with the one above. Check it and attach it if it fits.</app_event>`,
+      },
+    ]);
+    return c.json({ ok: true });
   });
 
   // --- Tasks ---
@@ -339,6 +474,63 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
+  // --- Admin (emails listed in ADMIN_EMAILS) ---
+
+  const admin = new Hono<Env>();
+  admin.use("*", async (c, next) => {
+    if (!isAdmin(c.get("user"))) return c.json({ error: "forbidden" }, 403);
+    await next();
+  });
+
+  admin.get("/overview", async (c) => {
+    const [allUsers, allClaims] = await Promise.all([list<User>(users), list<Claim>(claims)]);
+    const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+    const today = (await firestore.collection("usage").doc(`_all_${day}`).get()).data() ?? {};
+    const byUser = new Map<string, Claim[]>();
+    for (const cl of allClaims) byUser.set(cl.user_id, [...(byUser.get(cl.user_id) ?? []), cl]);
+    const rows = allUsers
+      .map((u) => {
+        const theirs = (byUser.get(u.id) ?? []).filter((cl) => cl.engaged !== false);
+        return {
+          id: u.id,
+          email: u.email,
+          full_name: u.full_name,
+          created_at: u.created_at,
+          claim_limit: claimLimit(u),
+          claims: theirs.length,
+          submitted: theirs.filter((cl) => cl.status === "submitted").length,
+          approved_total: theirs.reduce((s, cl) => s + (cl.outcome_amount ?? 0), 0),
+          cost_usd: u.cost_usd ?? 0,
+          last_activity: theirs.map((cl) => cl.updated_at).sort().at(-1) ?? null,
+        };
+      })
+      .sort((a, b) => (b.last_activity ?? b.created_at).localeCompare(a.last_activity ?? a.created_at));
+    const engaged = allClaims.filter((cl) => cl.engaged !== false);
+    return c.json({
+      totals: {
+        users: allUsers.length,
+        claims: engaged.length,
+        submitted: engaged.filter((cl) => cl.status === "submitted").length,
+        with_outcome: engaged.filter((cl) => cl.outcome).length,
+        cost_usd: allUsers.reduce((s, u) => s + (u.cost_usd ?? 0), 0),
+        avg_cost_per_claim: engaged.length ? engaged.reduce((s, cl) => s + (cl.cost_usd ?? 0), 0) / engaged.length : 0,
+        today_messages: (today.messages as number | undefined) ?? 0,
+        today_uploads: (today.uploads as number | undefined) ?? 0,
+      },
+      users: rows,
+    });
+  });
+
+  admin.post("/users/:uid", async (c) => {
+    const { claim_limit } = z.object({ claim_limit: z.number().int().min(0).max(1000) }).parse(await c.req.json());
+    const ref = users.doc(c.req.param("uid"));
+    if (!(await ref.get()).exists) throw new HTTPException(404, { message: "user not found" });
+    await ref.update({ claim_limit });
+    return c.json({ ok: true });
+  });
+
+  api.route("/admin", admin);
+
   const app = new Hono();
   app.route("/api", api);
   return app;
@@ -346,10 +538,29 @@ export function createApp(config: AppConfig) {
 
 /**
  * How many claims a user may open. FREE_CLAIM_LIMIT applies to everyone; a `claim_limit` field on
- * the user's Firestore document (set by hand, e.g. after a paid arrangement) overrides it.
+ * the user's document (set from the admin screen, e.g. after a paid arrangement) overrides it.
  */
 function claimLimit(user: User): number {
-  return (user as User & { claim_limit?: number }).claim_limit ?? Number(process.env.FREE_CLAIM_LIMIT ?? 1);
+  return user.claim_limit ?? Number(process.env.FREE_CLAIM_LIMIT ?? 1);
+}
+
+/** Claims that count toward the limit: all of the user's claims except empty ones (engaged: false). */
+async function engagedClaimCount(userId: string): Promise<number> {
+  const [all, empty] = await Promise.all([
+    claims.where("user_id", "==", userId).count().get(),
+    claims.where("user_id", "==", userId).where("engaged", "==", false).count().get(),
+  ]);
+  return all.data().count - empty.data().count;
+}
+
+function isAdmin(user: User): boolean {
+  const admins = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return admins.includes(user.email.toLowerCase());
+}
+
+/** What the client gets for the signed-in user. */
+function profileOf(user: User) {
+  return { ...user, family: user.family ?? [], claim_limit: claimLimit(user), is_admin: isAdmin(user) };
 }
 
 function safeEqual(a: string, b: string): boolean {

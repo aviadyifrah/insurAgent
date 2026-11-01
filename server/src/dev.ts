@@ -4,8 +4,7 @@ import path from "node:path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
-import { dispatchInBackground } from "./agent/agent";
-import { sendDueReminders } from "./reminders";
+import { dispatchInBackground, sweepStranded } from "./agent/agent";
 
 const app = createApp({ accessCode: () => process.env.ACCESS_CODE ?? "", dispatch: dispatchInBackground });
 
@@ -16,7 +15,5 @@ if (fs.existsSync(WEB_DIST)) app.use("/*", serveStatic({ root: path.relative(pro
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port }, () => console.log(`InsurAgent server on http://localhost:${port}`));
 
-// In production Cloud Scheduler triggers reminders; locally a timer does.
-const tick = () => sendDueReminders().catch((err) => console.error("reminders failed", err));
-tick();
-setInterval(tick, 60_000);
+// In production a scheduled function sweeps stranded agent input; locally a timer does.
+setInterval(() => sweepStranded().catch((err) => console.error("sweep failed", err)), 2 * 60 * 1000);

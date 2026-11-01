@@ -9,6 +9,7 @@ import { Home } from "./pages/Home";
 import { ClaimPage } from "./pages/ClaimPage";
 import { Profile } from "./pages/Profile";
 import { Legal } from "./pages/Legal";
+import { Admin } from "./pages/Admin";
 
 export function navigate(path: string) {
   window.location.hash = path;
@@ -57,6 +58,7 @@ export function App() {
   const { user } = session;
   const claimMatch = route.match(/^\/claims\/([\w-]+)$/);
   if (claimMatch) return <ClaimPage key={claimMatch[1]} claimId={claimMatch[1]} user={user} />;
+  if (route === "/admin" && user.is_admin) return <Admin />;
   if (route === "/profile") return <Profile user={user} onChange={(u) => setSession({ state: "ready", user: u })} />;
   return <Home user={user} />;
 }

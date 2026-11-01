@@ -18,7 +18,19 @@ export interface User {
   bank_details: string | null;
   consent_version: string | null;
   consent_at: string | null;
+  /** Family members whose claims this user files (children, spouse). */
+  family?: FamilyMember[];
+  /** Overrides FREE_CLAIM_LIMIT for this user (set by an admin). */
+  claim_limit?: number;
+  /** Running model cost in USD across this user's claims and uploads. */
+  cost_usd?: number;
   created_at: string;
+}
+
+export interface FamilyMember {
+  name: string;
+  id_number: string | null;
+  relation: string | null;
 }
 
 export interface Claim {
@@ -35,7 +47,22 @@ export interface Claim {
   claim_type: string | null;
   amount: number | null;
   template_id: string | null;
+  /** Who was treated, when it isn't the account holder. */
+  patient_name?: string | null;
+  patient_id_number?: string | null;
+  patient_relation?: string | null;
   status: "collecting" | "ready" | "submitted";
+  /** False until the first message; empty claims don't count toward the trial limit. */
+  engaged?: boolean;
+  /** What the insurer answered, recorded by the user after submitting. */
+  outcome?: "approved" | "partial" | "rejected" | "docs_requested" | null;
+  outcome_amount?: number | null;
+  outcome_at?: string | null;
+  /** Model cost of this claim in USD. */
+  cost_usd?: number;
+  /** Firestore lease so only one agent run per claim happens anywhere (see drainInbox). */
+  agent_lock_owner?: string | null;
+  agent_lock_until?: string | null;
   /** Lets every open screen show that the agent is working, since its runs happen in the background. */
   agent_status: "idle" | "working";
   agent_started_at: string | null;
@@ -68,9 +95,6 @@ export interface Task {
   title: string;
   instructions: string;
   status: "open" | "done" | "cancelled";
-  reminder_count: number;
-  next_reminder_at: string | null;
-  last_reminded_at: string | null;
   created_at: string;
   completed_at: string | null;
 }
