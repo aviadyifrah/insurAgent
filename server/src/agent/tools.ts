@@ -125,6 +125,8 @@ const tools = [
       await updateClaim(ctx.claim.id, { template_id: tpl.id });
       return ok({
         template: tpl.id,
+        // False when this is the insurer's general list rather than one for this claim type.
+        specific_to_claim_type: tpl.claim_type !== "*",
         verified: tpl.verified,
         submission: tpl.submission,
         requirements: (await requirementsOf(ctx.claim.id)).map(({ id, key, title, description, required, needs_signature }) => ({
