@@ -167,6 +167,7 @@ export function Login() {
         {error && <p className="error">{error}</p>}
         <p className="hero-note">כניסה עם חשבון Google, בלי סיסמה חדשה</p>
         <p className="hero-privacy">🔒 המסמכים שלכם נשמרים רק בטלפון שלכם</p>
+        <ClaimExamples />
       </section>
 
       <section className="landing-section privacy">
@@ -202,12 +203,6 @@ export function Login() {
             </li>
           ))}
         </ol>
-      </section>
-
-      <section className="landing-section">
-        <h2>ככה זה נראה</h2>
-        <p className="section-lead">שלוש דוגמאות לתיקים בדרך להגשה. אפשר לגלול הצידה.</p>
-        <ClaimExamples />
       </section>
 
       <section className="landing-section">
