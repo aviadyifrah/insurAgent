@@ -144,7 +144,7 @@ const tools = [
   tool({
     name: "add_requirement",
     description:
-      "Add a document requirement the template does not cover. Only when the insurer itself asked for it (an insurer_requested_documents event, or the user says the insurer's form or website lists it); never on your own initiative.",
+      "Add a document requirement the template does not cover. Only when the insurer itself lists it: it asked for it (an insurer_requested_documents event), the user says the insurer's form or website lists it, or you found it on the insurer's official website (put the page URL in the description). Never on your own initiative.",
     schema: z.object({
       title: z.string(),
       description: z.string(),

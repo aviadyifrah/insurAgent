@@ -14,7 +14,11 @@ export interface Usage {
   output_tokens: number;
   cache_creation_input_tokens?: number | null;
   cache_read_input_tokens?: number | null;
+  server_tool_use?: { web_search_requests?: number | null } | null;
 }
+
+// Web search is billed per search on top of tokens ($10 per 1,000).
+const WEB_SEARCH_USD = 0.01;
 
 export function costOf(model: string, usage: Usage): number {
   const price = Object.entries(PRICES).find(([id]) => model.startsWith(id))?.[1] ?? FALLBACK_PRICE;
@@ -25,7 +29,7 @@ export function costOf(model: string, usage: Usage): number {
     cacheWrite * price.input * 1.25 +
     cacheRead * price.input * 0.1 +
     usage.output_tokens * price.output;
-  return dollars / 1_000_000;
+  return dollars / 1_000_000 + (usage.server_tool_use?.web_search_requests ?? 0) * WEB_SEARCH_USD;
 }
 
 /** Adds a response's cost to the user's (and, when known, the claim's) running total. */
