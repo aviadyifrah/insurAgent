@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "../firebase";
 import { SUPPORTED } from "@insuragent/shared/supported";
@@ -20,8 +20,16 @@ const VS_GENERIC_CHAT = [
   { icon: "⏰", title: "לא שוכחים כלום", text: "משימות פתוחות ותזכורות ליומן, עד שהתיק סגור." },
 ];
 
+// Must stay consistent with the privacy section of the terms (Legal.tsx): files live on the device,
+// and are sent once to the AI provider to be read, without being kept on our server.
+const PRIVACY = [
+  { icon: "📱", title: "נשמרים רק בטלפון שלכם", text: "הקבלות, הסיכומים והחתימה נשמרים במכשיר שלכם בלבד, לא בשרת שלנו ולא בענן." },
+  { icon: "🚫", title: "לא נמסרים לאחרים", text: "לא לחברות ביטוח, לא למפרסמים ולא לשום גורם אחר. לא מוכרים מידע ולא משתמשים בו לפרסום." },
+  { icon: "🔍", title: "נקראים רק כדי לבדוק אותם", text: "בהעלאה המסמך נשלח פעם אחת לקריאה אוטומטית במודל AI, ולא נשמר אצלנו." },
+];
+
 const PRINCIPLES = [
-  { icon: "📱", title: "המסמכים נשארים אצלכם", text: "הקבצים נשמרים במכשיר שלכם, לא בשרת שלנו." },
+  { icon: "📋", title: "רק מה שצריך", text: "לא מבקשים מסמכים מיותרים: רק מה שחברת הביטוח שלכם דורשת." },
   { icon: "🙋", title: "אתם מגישים", text: "אנחנו כלי עזר בלבד: לא מגישים, לא שולחים ולא מייצגים בשמכם." },
   { icon: "🤝", title: "בלי הבטחות", text: "לא מעריכים סכומים ולא קובעים מה מכוסה. את זה מחליטה חברת הביטוח." },
 ];
@@ -40,24 +48,85 @@ function SignInButton({ onClick, busy }: { onClick: () => void; busy: boolean })
   );
 }
 
-/** A static preview of a claim in progress, so visitors see what they get before signing in. */
-function ClaimPreview() {
+// Example claims for the landing carousel. Items follow the real templates in server/knowledge.
+const EXAMPLES: { title: string; done: number; items: { text: string; state?: "pending" | "action" }[] }[] = [
+  {
+    title: "🦷 טיפול שורש · מנורה מבטחים",
+    done: 1,
+    items: [
+      { text: "✅ קבלה מהמרפאה" },
+      { text: "⏳ צילומים אבחנתיים: נשלחה בקשה למרפאה", state: "pending" },
+      { text: "✍️ טופס התביעה: נשאר למלא באתר מנורה", state: "action" },
+    ],
+  },
+  {
+    title: "🦷 כתר · מגדל",
+    done: 2,
+    items: [
+      { text: "✅ העתק קבלות" },
+      { text: "✅ טופס 167, חלק המבוטח" },
+      { text: "✉️ חלק הרופא: מייל מוכן לשליחה למרפאה", state: "action" },
+    ],
+  },
+  {
+    title: "🩺 ייעוץ אורתופד לבת · מכבי שלי",
+    done: 3,
+    items: [
+      { text: "✅ קבלה" },
+      { text: "✅ סיכום ביקור" },
+      { text: "📦 התיק מוכן: מורידים PDF ומגישים", state: "action" },
+    ],
+  },
+];
+
+/** Static previews of claims in progress, swiped sideways, so visitors see what they get before signing in. */
+function ClaimExamples() {
+  const [current, setCurrent] = useState(0);
+  const track = useRef<HTMLDivElement>(null);
+
+  function onScroll() {
+    const el = track.current;
+    if (!el) return;
+    // RTL scrollLeft runs from 0 to negative; the absolute value works either way.
+    const step = (el.scrollWidth - el.clientWidth) / (EXAMPLES.length - 1);
+    setCurrent(step > 0 ? Math.round(Math.abs(el.scrollLeft) / step) : 0);
+  }
+
+  function go(i: number) {
+    const card = track.current?.children[i] as HTMLElement | undefined;
+    card?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }
+
   return (
-    <div className="preview" aria-hidden="true">
-      <div className="preview-head">
-        <strong>🦷 טיפול שורש · הראל</strong>
-        <span className="preview-badge">4 מתוך 6</span>
+    <div className="examples">
+      <div className="examples-track" ref={track} onScroll={onScroll}>
+        {EXAMPLES.map((ex) => {
+          const total = ex.items.length;
+          return (
+            <div key={ex.title} className="preview" aria-label={ex.title}>
+              <div className="preview-head">
+                <strong>{ex.title}</strong>
+                <span className="preview-badge">{ex.done === total ? "מוכן להגשה" : `${ex.done} מתוך ${total}`}</span>
+              </div>
+              <div className="progress-track">
+                <div className="progress-bar" style={{ width: `${(ex.done / total) * 100}%` }} />
+              </div>
+              <ul>
+                {ex.items.map((it) => (
+                  <li key={it.text} className={it.state}>
+                    {it.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
       </div>
-      <div className="progress-track">
-        <div className="progress-bar" style={{ width: "66%" }} />
+      <div className="examples-dots">
+        {EXAMPLES.map((ex, i) => (
+          <button key={ex.title} className={i === current ? "active" : ""} onClick={() => go(i)} aria-label={`דוגמה ${i + 1}`} />
+        ))}
       </div>
-      <ul>
-        <li>✅ חשבונית מס / קבלה</li>
-        <li>✅ צילום תעודת זהות</li>
-        <li>✅ אישור ניהול חשבון</li>
-        <li className="pending">⏳ פירוט טיפולים: נשלחה בקשה למרפאה</li>
-        <li className="action">✍️ טופס התביעה מוכן, נשאר רק לחתום</li>
-      </ul>
     </div>
   );
 }
@@ -97,7 +166,25 @@ export function Login() {
         <SignInButton onClick={signIn} busy={busy} />
         {error && <p className="error">{error}</p>}
         <p className="hero-note">כניסה עם חשבון Google, בלי סיסמה חדשה</p>
-        <ClaimPreview />
+        <p className="hero-privacy">🔒 המסמכים שלכם נשמרים רק בטלפון שלכם</p>
+      </section>
+
+      <section className="landing-section privacy">
+        <h2>🔒 המסמכים שלכם נשארים שלכם</h2>
+        <div className="privacy-points">
+          {PRIVACY.map((p) => (
+            <div key={p.title} className="privacy-point">
+              <span className="benefit-icon">{p.icon}</span>
+              <div>
+                <h3>{p.title}</h3>
+                <p>{p.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="fits">
+          כל הפרטים ב<a href="#/legal">תנאי השימוש והפרטיות</a>.
+        </p>
       </section>
 
       <section className="landing-section">
@@ -115,6 +202,12 @@ export function Login() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="landing-section">
+        <h2>ככה זה נראה</h2>
+        <p className="section-lead">שלוש דוגמאות לתיקים בדרך להגשה. אפשר לגלול הצידה.</p>
+        <ClaimExamples />
       </section>
 
       <section className="landing-section">
