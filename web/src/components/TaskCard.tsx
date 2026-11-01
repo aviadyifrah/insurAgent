@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { ClaimView, DocumentRow, EmailDraft, Task, User } from "../types";
+import type { MimeAttachment } from "@insuragent/shared/mime";
+import { buildPackagePdf, packageFilename } from "../claimPackage";
+import { documentStore } from "../documentStore";
+import { createGmailDraft, gmailToken, GmailError } from "../gmail";
 import { DocLink } from "./DocLink";
 import { SignaturePad } from "./SignaturePad";
 
@@ -70,7 +74,7 @@ export function TaskCard({ task, view, act }: Props) {
       {open && task.type === "send_email" && email && (
         <EmailModal
           email={email}
-          documents={view.documents}
+          view={view}
           onClose={() => setOpen(false)}
           onSent={() => run(() => api.emailSent(claimId, email.id))}
         />
@@ -201,18 +205,52 @@ function SignModal({ view, onClose, onSign }: { view: ClaimView; onClose: () => 
   );
 }
 
+/** The files to attach: the email's documents from this device, and the claim PDF for a submission email. */
+async function draftAttachments(email: EmailDraft, view: ClaimView): Promise<{ files: MimeAttachment[]; missing: string[] }> {
+  const files: MimeAttachment[] = [];
+  const missing: string[] = [];
+  for (const doc of view.documents.filter((d) => email.attachment_ids.includes(d.id))) {
+    const file = await documentStore.get(doc.storage_ref);
+    if (file) files.push({ filename: doc.filename, mime: file.mime || doc.mime, bytes: new Uint8Array(await file.blob.arrayBuffer()) });
+    else missing.push(doc.filename);
+  }
+  if (email.purpose === "submit_claim") {
+    const { pdf, missing: notHere } = await buildPackagePdf(view, await api.me());
+    if (pdf) files.push({ filename: packageFilename(view), mime: "application/pdf", bytes: pdf });
+    else missing.push(...notHere);
+  }
+  return { files, missing };
+}
+
 export function EmailModal({
   email,
-  documents,
+  view,
   onClose,
   onSent,
 }: {
   email: EmailDraft;
-  documents: DocumentRow[];
+  view: ClaimView;
   onClose: () => void;
   onSent?: () => void;
 }) {
+  const documents = view.documents;
+  const [gmail, setGmail] = useState<{ state: "idle" | "working" } | { state: "done"; link: string; count: number } | { state: "error"; message: string }>({
+    state: "idle",
+  });
   const mailto = `mailto:${email.to_address ?? ""}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
+
+  async function toGmail() {
+    setGmail({ state: "working" });
+    try {
+      const token = await gmailToken(); // first, while still inside the click
+      const { files, missing } = await draftAttachments(email, view);
+      if (missing.length > 0) throw new GmailError(`חסרים במכשיר הזה: ${missing.join(", ")}. אפשר להעלות אותם שוב מהתיק.`);
+      const link = await createGmailDraft(token, { to: email.to_address, subject: email.subject, body: email.body, attachments: files });
+      setGmail({ state: "done", link, count: files.length });
+    } catch (err) {
+      setGmail({ state: "error", message: err instanceof GmailError ? err.message : "יצירת הטיוטה נכשלה. אפשר לנסות שוב." });
+    }
+  }
   return (
     <Modal title="מייל מוכן לשליחה" onClose={onClose}>
       <dl className="summary">
@@ -229,7 +267,7 @@ export function EmailModal({
       {email.attachment_ids.length > 0 && (
         <div className="attachments">
           <p className="small">
-            <strong>קבצים לצרף:</strong> הורד וצרף אותם למייל.
+            <strong>קבצים לצרף:</strong> בטיוטה ב-Gmail הם מצורפים לבד. באפליקציית מייל אחרת צריך להוריד ולצרף אותם.
           </p>
           {documents
             .filter((d) => email.attachment_ids.includes(d.id))
@@ -240,9 +278,25 @@ export function EmailModal({
             ))}
         </div>
       )}
+      {email.purpose === "submit_claim" && <p className="small muted">קובץ התביעה (PDF) יצורף לטיוטה ב-Gmail אוטומטית.</p>}
       <div className="btn-col">
-        <a className="button primary" href={mailto}>
-          פתח באפליקציית המייל
+        {gmail.state === "done" ? (
+          <div className="gmail-done">
+            <p>
+              ✓ הטיוטה מחכה ב-Gmail{gmail.count > 0 && `, עם ${gmail.count} קבצים מצורפים`}. פותחים, בודקים ושולחים.
+            </p>
+            <a className="button primary" href={gmail.link} target="_blank" rel="noreferrer">
+              פתח את Gmail
+            </a>
+          </div>
+        ) : (
+          <button className="primary" onClick={toGmail} disabled={gmail.state === "working"}>
+            {gmail.state === "working" ? "מכין טיוטה…" : "📧 צור טיוטה ב-Gmail"}
+          </button>
+        )}
+        {gmail.state === "error" && <p className="small error">{gmail.message}</p>}
+        <a className="button" href={mailto}>
+          פתח באפליקציית מייל אחרת
         </a>
         <button onClick={() => navigator.clipboard.writeText(email.body)}>העתק את הטקסט</button>
         {onSent && email.status === "draft" && (

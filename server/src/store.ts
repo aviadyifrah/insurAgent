@@ -8,6 +8,7 @@
 //   documents/{docId}                                      metadata only; files stay with the client
 import type { DocumentData, Query } from "firebase-admin/firestore";
 import { firestore } from "./firebase";
+import type { Policy } from "./agent/policies";
 
 export interface User {
   id: string;
@@ -24,6 +25,9 @@ export interface User {
   claim_limit?: number;
   /** Running model cost in USD across this user's claims and uploads. */
   cost_usd?: number;
+  /** From the Har HaBituach report the user uploaded (the file itself isn't kept). */
+  policies?: Policy[];
+  policies_updated_at?: string;
   created_at: string;
 }
 

@@ -9,6 +9,18 @@ export interface User {
   claim_limit: number;
   family: FamilyMember[];
   is_admin: boolean;
+  policies?: Policy[];
+  policies_updated_at?: string;
+}
+
+/** One line of the Har HaBituach report. */
+export interface Policy {
+  insurer: string;
+  branch: string;
+  product: string | null;
+  policy_number: string | null;
+  period: string | null;
+  claimable: boolean;
 }
 
 export interface FamilyMember {

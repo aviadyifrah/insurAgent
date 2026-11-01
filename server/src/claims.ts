@@ -84,6 +84,12 @@ export async function claimSnapshot(claim: Claim): Promise<string> {
       outcome: claim.outcome ?? null,
     },
     family_members: (user?.family ?? []).map((m) => ({ name: m.name, relation: m.relation, has_id_number: !!m.id_number })),
+    // From Har HaBituach, when the user uploaded it; only cover they might claim from.
+    policies: user?.policies
+      ? user.policies
+          .filter((p) => p.claimable)
+          .map((p) => ({ insurer: p.insurer, insurer_key: p.insurer_key, branch: p.branch, product: p.product, policy_number: p.policy_number }))
+      : "not uploaded",
     profile_complete: {
       full_name: !!user?.full_name,
       id_number: !!user?.id_number,

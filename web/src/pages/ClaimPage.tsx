@@ -316,7 +316,7 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
         </div>
       )}
 
-      {openEmail && <EmailModal email={openEmail} documents={documents} onClose={() => setOpenEmail(null)} />}
+      {openEmail && <EmailModal email={openEmail} view={view!} onClose={() => setOpenEmail(null)} />}
     </main>
   );
 }

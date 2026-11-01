@@ -4,7 +4,9 @@
   "type": "module",
   "exports": {
     "./pdf": "./src/pdf.ts",
-    "./supported": "./src/supported.ts"
+    "./supported": "./src/supported.ts",
+    "./mime": "./src/mime.ts",
+    "./xlsx": "./src/xlsx.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

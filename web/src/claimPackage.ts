@@ -13,11 +13,26 @@ async function loadFonts(): Promise<FontBytes> {
   return { hebrew400: h4, latin400: l4, hebrew700: h7, latin700: l7 };
 }
 
-/**
- * Builds the submission PDF on this device from the locally stored files and downloads it.
- * Returns the titles of documents that aren't on this device (nothing is built in that case).
- */
+/** Builds the submission PDF and downloads it. Returns the titles of documents missing from this device. */
 export async function downloadClaimPackage(view: ClaimView, user: User): Promise<{ missing: string[] }> {
+  const { pdf, missing } = await buildPackagePdf(view, user);
+  if (!pdf) return { missing };
+  const url = URL.createObjectURL(new Blob([pdf as Uint8Array<ArrayBuffer>], { type: "application/pdf" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = packageFilename(view);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return { missing };
+}
+
+export const packageFilename = (view: ClaimView) => `תביעה-${view.claim.id}.pdf`;
+
+/**
+ * Builds the submission PDF on this device from the locally stored files. When some documents
+ * aren't on this device, nothing is built and their titles are returned.
+ */
+export async function buildPackagePdf(view: ClaimView, user: User): Promise<{ pdf?: Uint8Array; missing: string[] }> {
   const docs = new Map(view.documents.map((d) => [d.id, d]));
   const missing: string[] = [];
   const attachments: { title: string; mime: string; bytes: Uint8Array }[] = [];
@@ -38,11 +53,5 @@ export async function downloadClaimPackage(view: ClaimView, user: User): Promise
   if (missing.length > 0) return { missing };
 
   const pdf = await buildClaimPackage({ claim: view.claim, user, signature, attachments }, await loadFonts());
-  const url = URL.createObjectURL(new Blob([pdf as Uint8Array<ArrayBuffer>], { type: "application/pdf" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `תביעה-${view.claim.id}.pdf`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  return { missing };
+  return { pdf, missing };
 }

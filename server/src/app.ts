@@ -7,6 +7,8 @@ import { auth, firestore } from "./firebase";
 import { addChat, claimView, closeTask } from "./claims";
 import { documentBlocks, type Dispatch } from "./agent/agent";
 import { ANALYZABLE_MIME, readDocument } from "./agent/extract";
+import { readPolicies, type PolicySource } from "./agent/policies";
+import { FieldValue } from "firebase-admin/firestore";
 import { recordUsage } from "./costs";
 import { consumeQuota } from "./quota";
 import {
@@ -137,6 +139,37 @@ export function createApp(config: AppConfig) {
     return c.json(profileOf((await getUser(c.get("user").id))!));
   });
 
+  /**
+   * Reads the user's policy list from Har HaBituach: either the text of the exported spreadsheet
+   * (read on the device) or a PDF / screenshot of the report. Only the extracted list is kept.
+   */
+  api.post("/me/policies", async (c) => {
+    const user = c.get("user");
+    const body = await c.req.parseBody();
+    let source: PolicySource;
+    if (typeof body.text === "string" && body.text.trim()) {
+      source = { text: body.text.slice(0, 60_000) };
+    } else if (body.file instanceof File) {
+      if (!ANALYZABLE_MIME.has(body.file.type)) throw new HTTPException(400, { message: "unsupported file type" });
+      if (body.file.size > MAX_UPLOAD_BYTES) throw new HTTPException(400, { message: "file too large" });
+      source = { bytes: Buffer.from(await body.file.arrayBuffer()), mime: body.file.type };
+    } else {
+      throw new HTTPException(400, { message: "text or file is required" });
+    }
+    await consumeQuota(user.id, "uploads");
+    const { parsed, model, usage } = await readPolicies(source);
+    await recordUsage({ userId: user.id, model, usage });
+    if (!parsed?.is_policy_report || parsed.policies.length === 0) return c.json({ error: "not_a_policy_report" }, 422);
+    await users.doc(user.id).update({ policies: parsed.policies, policies_updated_at: now() });
+    return c.json(profileOf((await getUser(user.id))!));
+  });
+
+  api.delete("/me/policies", async (c) => {
+    const user = c.get("user");
+    await users.doc(user.id).update({ policies: FieldValue.delete(), policies_updated_at: FieldValue.delete() });
+    return c.json(profileOf((await getUser(user.id))!));
+  });
+
   /** Deletes the account and everything stored about it. Returns the device files to remove. */
   api.delete("/me", async (c) => {
     const user = c.get("user");
@@ -146,6 +179,8 @@ export function createApp(config: AppConfig) {
     await Promise.all(docs.map((d) => documents.doc(d.id).delete()));
     const usage = await firestore.collection("usage").where("user_id", "==", user.id).get();
     await Promise.all(usage.docs.map((d) => d.ref.delete()));
+    const requests = await teamRequests.where("user_id", "==", user.id).get();
+    await Promise.all(requests.docs.map((d) => d.ref.delete()));
     await users.doc(user.id).delete();
     await auth.deleteUser(user.id).catch((err) => console.error("deleting auth user failed", err));
     return c.json({ ok: true, storage_refs: docs.map((d) => d.storage_ref) });

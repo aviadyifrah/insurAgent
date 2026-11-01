@@ -1,6 +1,7 @@
 import type { AdminOverview, Claim, ClaimSummary, DocumentRow, User } from "./types";
 import { documentStore } from "./documentStore";
 import { auth } from "./firebase";
+import { xlsxToText } from "@insuragent/shared/xlsx";
 
 export class ApiError extends Error {
   constructor(
@@ -16,6 +17,9 @@ export function errorMessage(err: unknown, fallback = "משהו השתבש. אפ
   if (err instanceof ApiError && err.message === "daily_limit") return "הגעת למכסה היומית. אפשר להמשיך מחר.";
   if (err instanceof ApiError && err.message === "service_busy") return "השירות עמוס היום. אפשר לנסות שוב מחר.";
   if (err instanceof ApiError && err.message === "claim_limit") return "בגרסת הניסיון אפשר לפתוח תיק אחד. לתיק נוסף אפשר לפנות אלינו בוואטסאפ.";
+  if (err instanceof ApiError && err.message === "not_a_policy_report") return "לא מצאנו בקובץ רשימת פוליסות. צריך את הקובץ מהר הביטוח.";
+  if (err instanceof ApiError && err.message === "unreadable_spreadsheet")
+    return "לא הצלחנו לקרוא את קובץ האקסל. אפשר לשמור אותו כ-xlsx, או להעלות צילום מסך או PDF של הדוח.";
   return fallback;
 }
 
@@ -74,6 +78,27 @@ export const api = {
     if (claimId) form.append("claim_id", claimId);
     return request<DocumentRow>("/documents", { method: "POST", body: form });
   },
+
+  /**
+   * Uploads the Har HaBituach policy report. A spreadsheet is read here on the device and only its
+   * text is sent; a PDF or screenshot is sent as is. Only the extracted list is kept, not the file.
+   */
+  async uploadPolicies(file: File): Promise<User> {
+    const form = new FormData();
+    if (/\.csv$/i.test(file.name) || file.type === "text/csv") {
+      form.append("text", await file.text());
+    } else if (/\.xlsx?$/i.test(file.name) || file.type.includes("spreadsheet") || file.type.includes("excel")) {
+      try {
+        form.append("text", await xlsxToText(new Uint8Array(await file.arrayBuffer())));
+      } catch {
+        throw new ApiError(400, "unreadable_spreadsheet");
+      }
+    } else {
+      form.append("file", await prepareFile(file));
+    }
+    return request<User>("/me/policies", { method: "POST", body: form });
+  },
+  deletePolicies: () => request<User>("/me/policies", { method: "DELETE" }),
 
   completeTask: (claimId: string, taskId: string, document_ids: string[] = [], note?: string) =>
     post<{ ok: boolean }>(`/claims/${claimId}/tasks/${taskId}/complete`, { document_ids, note }),
