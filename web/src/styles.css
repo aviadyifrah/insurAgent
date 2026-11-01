@@ -125,9 +125,6 @@ label input { margin-top: 0.25rem; color: var(--text); }
 
 /* Composer */
 .composer { margin-top: 0.6rem; }
-.composer-row { display: flex; gap: 6px; align-items: flex-end; }
-.composer textarea { resize: none; min-height: 44px; max-height: 140px; }
-.send-btn { background: var(--primary); color: #fff; border: none; border-radius: 50%; width: 44px; height: 44px; padding: 0; flex: none; transform: scaleX(-1); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
@@ -263,13 +260,40 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 .landing-footer { text-align: center; font-size: 0.85rem; color: var(--muted); padding: 28px 0 36px; border-top: 1px solid var(--border); margin-top: 24px; }
 .landing-footer p { margin-bottom: 8px; }
 
-/* Voice dictation */
-.mic-btn.listening { color: #fff; background: #dc2626; border-radius: 50%; width: 44px; height: 44px; font-size: 1.1rem; animation: mic-pulse 1.4s ease-in-out infinite; }
-@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); } 50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); } }
-.composer-row .icon-btn { padding: 0.3rem 0.2rem; font-size: 1.25rem; }
-.composer-row textarea { min-width: 0; }
 
 /* Reminder suggestions */
 .card.reminder { border-color: #d97706; border-width: 1.5px; }
 .reminder-actions { flex-wrap: wrap; align-items: center; }
 .reminder-actions .button, .reminder-actions button { padding: 0.5rem 0.8rem; font-size: 0.92rem; }
+
+/* WhatsApp-style message bar */
+.wa-row { display: flex; align-items: flex-end; gap: 8px; }
+.wa-pill {
+  flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 24px;
+  padding: 4px 6px 4px 12px; min-height: 48px;
+}
+.wa-pill.locked { opacity: 0.6; }
+.wa-pill textarea {
+  flex: 1; min-width: 0; border: none; background: transparent; resize: none; outline: none;
+  padding: 9px 4px; font-size: 1.05rem; line-height: 1.4; max-height: 140px; min-height: 0;
+}
+.wa-pill textarea:focus { box-shadow: none; }
+.wa-icon { border: none; background: none; padding: 8px 6px; font-size: 1.25rem; line-height: 1; flex: none; color: var(--muted); }
+.wa-round {
+  flex: none; width: 48px; height: 48px; border-radius: 50%; border: none; padding: 0;
+  display: grid; place-items: center; background: var(--success); color: #fff;
+}
+.wa-round:disabled { opacity: 0.45; }
+.wa-pill.recording { align-items: center; cursor: text; gap: 10px; padding-inline-start: 16px; }
+.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: #dc2626; flex: none; animation: rec-blink 1s ease-in-out infinite; }
+@keyframes rec-blink { 50% { opacity: 0.25; } }
+.rec-text { flex: 1; min-width: 0; color: var(--text); font-size: 1rem; line-height: 1.4; padding: 8px 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
+/* Landing: vs. a generic AI chat */
+.section-lead { text-align: center; margin: -8px auto 18px !important; max-width: 28em; font-size: 1.02rem; }
+.benefits { display: grid; gap: 10px; }
+@media (min-width: 600px) { .benefits { grid-template-columns: 1fr 1fr; } }
+.benefit { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; }
+.benefit-icon { font-size: 1.5rem; line-height: 1; flex: none; margin-top: 2px; }
+.benefit h3 { margin: 0 0 2px; font-size: 1.05rem; }

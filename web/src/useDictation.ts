@@ -68,8 +68,13 @@ export function useDictation(onText: (text: string) => void) {
     setListening(true);
   }
 
+  /** Stops listening. Results that arrive after this are dropped, so the text stays as shown. */
   function stop() {
-    recognition.current?.stop();
+    const r = recognition.current;
+    if (!r) return;
+    r.onresult = null;
+    r.stop();
+    setListening(false);
   }
 
   return { supported: !!Ctor, listening, error, start, stop };
