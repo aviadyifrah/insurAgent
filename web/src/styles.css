@@ -33,9 +33,13 @@
 
 * { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* Nothing may widen the page past the screen (a long link in a message pushed the fixed message
+   bar sideways on phones): long words wrap, and anything that still overflows is clipped. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: hidden; }
 
 body {
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
   margin: 0;
   background: var(--bg);
   color: var(--text);
@@ -164,6 +168,7 @@ label input { margin-top: 0.25rem; color: var(--text); }
 
 .checklist { list-style: none; padding: 0; margin: 0; }
 .checklist li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.checklist li > * { min-width: 0; }
 .checklist li.not_needed { opacity: 0.6; }
 
 /* Modal */
