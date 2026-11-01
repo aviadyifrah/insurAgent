@@ -43,6 +43,10 @@ const tool = <S extends z.ZodObject>(t: AgentTool<S>) => t;
 const ok = (extra: Record<string, unknown> = {}) => ({ ok: true, ...extra });
 
 const id = z.string().min(1);
+// A fixed set so templates match: a root canal, crown or implant is "dental", not its own type.
+const CLAIM_TYPE = z
+  .enum(["dental", "optics", "paramedical", "consultation", "other"])
+  .describe("dental = any treatment of teeth (root canal, crown, implant, filling, cleaning, orthodontics)");
 
 async function requirementOf(ctx: ToolContext, requirementId: string): Promise<Requirement> {
   const r = await getDoc<Requirement>(child(ctx.claim.id, "requirements").doc(requirementId));
@@ -70,7 +74,7 @@ const tools = [
       insurer: z.string().optional().describe("Insurer display name in Hebrew, e.g. 'הראל'"),
       insurer_key: z.string().optional().describe("Lowercase key: harel, migdal, clal, menora, phoenix, ayalon, clalit_mushlam, maccabi_sheli, meuhedet_adif, leumit_zahav"),
       policy_number: z.string().optional(),
-      claim_type: z.string().optional().describe("dental | optics | paramedical | consultation | other"),
+      claim_type: CLAIM_TYPE.optional(),
       amount: z.number().optional().describe("Amount paid in ILS"),
       patient_name: z.string().optional().describe("Who was treated, if not the account holder (e.g. a child)"),
       patient_id_number: z.string().optional(),
@@ -85,10 +89,10 @@ const tools = [
   tool({
     name: "load_requirements_template",
     description:
-      "Load the document checklist for this claim from the knowledge base by insurer_key + claim_type. Creates the requirement items. If no specific template exists, returns the available templates; then load template_id 'generic-health' and adapt it with add_requirement / update_requirement(not_needed).",
+      "Load the document checklist for this claim from the knowledge base by insurer_key + claim_type. Creates the requirement items. If no specific template exists, returns the available templates: load the one for this insurer and claim type by template_id if it exists; only if the insurer has none, look up its requirements online and use 'generic-health'.",
     schema: z.object({
       insurer_key: z.string().optional(),
-      claim_type: z.string().optional(),
+      claim_type: CLAIM_TYPE.optional(),
       template_id: z.string().optional().describe("Load a template by id instead, e.g. 'generic-health'"),
     }),
     run: async (input, ctx) => {
