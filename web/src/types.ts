@@ -135,6 +135,7 @@ export interface Reminder {
   status: "suggested" | "added" | "dismissed";
   created_at: string;
   whatsapp_status?: "scheduled" | "sent" | "failed" | "cancelled";
+  push_status?: "scheduled" | "sent" | "failed" | "cancelled";
 }
 
 export interface AdminOverview {

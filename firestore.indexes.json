@@ -4,16 +4,42 @@
       "collectionGroup": "claims",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "agent_status", "order": "ASCENDING" },
-        { "fieldPath": "agent_started_at", "order": "ASCENDING" }
+        {
+          "fieldPath": "agent_status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "agent_started_at",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "reminders",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        { "fieldPath": "whatsapp_status", "order": "ASCENDING" },
-        { "fieldPath": "due_at", "order": "ASCENDING" }
+        {
+          "fieldPath": "whatsapp_status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "due_at",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reminders",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "push_status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "due_at",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],
@@ -22,8 +48,14 @@
       "collectionGroup": "inbox",
       "fieldPath": "created_at",
       "indexes": [
-        { "order": "ASCENDING", "queryScope": "COLLECTION" },
-        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
       ]
     }
   ]

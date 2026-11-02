@@ -1,9 +1,10 @@
-import { initializeApp, type FirebaseOptions } from "firebase/app";
+import { initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore, type Firestore } from "firebase/firestore";
 
 export let auth: Auth;
 export let db: Firestore;
+export let app: FirebaseApp;
 
 /**
  * In development the app talks to the local emulators. On Firebase Hosting the project's config
@@ -14,7 +15,7 @@ export async function initFirebase() {
   const options: FirebaseOptions = useEmulators
     ? { apiKey: "demo-key", authDomain: "demo-insuragent.firebaseapp.com", projectId: "demo-insuragent" }
     : await (await fetch("/__/firebase/init.json")).json();
-  const app = initializeApp(options);
+  app = initializeApp(options);
   auth = getAuth(app);
   db = getFirestore(app);
   if (useEmulators) {

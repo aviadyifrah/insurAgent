@@ -31,6 +31,8 @@ export interface User {
   /** The number the user agreed to get WhatsApp reminders on, and when they agreed. */
   whatsapp_phone?: string;
   whatsapp_opt_in_at?: string;
+  /** Browsers that allowed notifications (web push tokens), most recent last. */
+  push_tokens?: { token: string; device: string; added_at: string }[];
   created_at: string;
 }
 
@@ -163,6 +165,10 @@ export interface Reminder {
   whatsapp_to?: string;
   whatsapp_sent_at?: string;
   whatsapp_error?: string;
+  /** Set when the user chose a phone notification. */
+  push_status?: "scheduled" | "sent" | "failed" | "cancelled";
+  push_sent_at?: string;
+  push_error?: string;
 }
 
 export interface ChatMessage {

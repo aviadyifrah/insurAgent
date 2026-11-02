@@ -402,3 +402,5 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 .whatsapp-btn { background: #25d366; color: #fff; border-color: #25d366; font-weight: 600; }
 .whatsapp-form { margin-top: 8px; }
 .whatsapp-form label { margin-bottom: 0.6rem; }
+.push-help { background: var(--event); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+.push-help ol { padding-inline-start: 1.2rem; margin: 6px 0; }

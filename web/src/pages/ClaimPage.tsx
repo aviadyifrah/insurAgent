@@ -296,9 +296,12 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
               <ul className="list">
                 {addedReminders.map((r) => (
                   <li key={r.id}>
-                    {r.whatsapp_status === "scheduled" || r.whatsapp_status === "sent" ? "📲" : "⏰"} {r.title}{" "}
+                    {r.push_status === "scheduled" || r.push_status === "sent" ? "🔔" : r.whatsapp_status === "scheduled" || r.whatsapp_status === "sent" ? "📲" : "⏰"} {r.title}{" "}
                     <span className="small muted">
                       · {reminderDay(r)}
+                      {r.push_status === "scheduled" && " · התראה בטלפון"}
+                      {r.push_status === "sent" && " · נשלחה התראה"}
+                      {r.push_status === "failed" && " · ההתראה לא נשלחה"}
                       {r.whatsapp_status === "scheduled" && " · בוואטסאפ"}
                       {r.whatsapp_status === "sent" && " · נשלחה בוואטסאפ"}
                       {r.whatsapp_status === "failed" && " · השליחה בוואטסאפ נכשלה"}

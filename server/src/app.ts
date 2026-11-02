@@ -12,6 +12,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { recordUsage } from "./costs";
 import { consumeQuota } from "./quota";
 import { israeliMobile, whatsappEnabled } from "./whatsapp";
+import { addPushToken, pushVapidKey, removePushToken } from "./push";
 import {
   add,
   child,
@@ -68,7 +69,7 @@ export function createApp(config: AppConfig) {
   });
 
   api.get("/health", (c) => c.json({ ok: true }));
-  api.get("/config", (c) => c.json({ access_code_required: config.accessCode() !== "", whatsapp_reminders: whatsappEnabled() }));
+  api.get("/config", (c) => c.json({ access_code_required: config.accessCode() !== "", whatsapp_reminders: whatsappEnabled(), push_vapid_key: pushVapidKey() }));
 
   // --- Auth: Firebase ID token on every request ---
 
@@ -163,6 +164,19 @@ export function createApp(config: AppConfig) {
     if (!parsed?.is_policy_report || parsed.policies.length === 0) return c.json({ error: "not_a_policy_report" }, 422);
     await users.doc(user.id).update({ policies: parsed.policies, policies_updated_at: now() });
     return c.json(profileOf((await getUser(user.id))!));
+  });
+
+  /** This browser allowed notifications: remember its token so reminders reach it. */
+  api.post("/me/push-tokens", async (c) => {
+    const { token, device } = z.object({ token: z.string().min(20).max(4096), device: z.string().max(200).default("") }).parse(await c.req.json());
+    await addPushToken(c.get("user"), token, device);
+    return c.json({ ok: true });
+  });
+
+  api.delete("/me/push-tokens", async (c) => {
+    const { token } = z.object({ token: z.string().max(4096) }).parse(await c.req.json());
+    await removePushToken(c.get("user"), token);
+    return c.json({ ok: true });
   });
 
   api.delete("/me/policies", async (c) => {
@@ -350,7 +364,23 @@ export function createApp(config: AppConfig) {
     const ref = child(claim.id, "reminders").doc(c.req.param("reminderId"));
     const reminder = await getDoc<Reminder>(ref);
     if (!reminder) throw new HTTPException(404, { message: "reminder not found" });
-    await ref.update({ status, ...(status === "dismissed" && reminder.whatsapp_status === "scheduled" && { whatsapp_status: "cancelled" }) });
+    await ref.update({
+      status,
+      ...(status === "dismissed" && reminder.whatsapp_status === "scheduled" && { whatsapp_status: "cancelled" }),
+      ...(status === "dismissed" && reminder.push_status === "scheduled" && { push_status: "cancelled" }),
+    });
+    return c.json({ ok: true });
+  });
+
+  /** The user asked for this reminder as a phone notification, on the devices that allowed them. */
+  api.post("/claims/:id/reminders/:reminderId/push", async (c) => {
+    const claim = await claimOr404(c);
+    if (!c.get("user").push_tokens?.length) return c.json({ error: "no_push_device" }, 400);
+    const ref = child(claim.id, "reminders").doc(c.req.param("reminderId"));
+    const reminder = await getDoc<Reminder>(ref);
+    if (!reminder) throw new HTTPException(404, { message: "reminder not found" });
+    if (reminder.due_at <= now()) return c.json({ error: "reminder_past" }, 400);
+    await ref.update({ status: "added", push_status: "scheduled" });
     return c.json({ ok: true });
   });
 

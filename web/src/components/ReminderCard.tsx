@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api";
+import { enablePush, PushError, pushState, type PushState } from "../push";
 import type { Reminder } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -80,7 +81,27 @@ interface Props {
 /** A suggested reminder: one tap adds it to the phone's calendar, or schedules it on WhatsApp. */
 export function ReminderCard({ reminder: r, phone, onChoice }: Props) {
   const whatsapp = useWhatsappOffered();
+  const [push, setPush] = useState<PushState>("off");
+  const [pushHelp, setPushHelp] = useState<"ios" | "blocked" | null>(null);
   const [asking, setAsking] = useState(false);
+
+  useEffect(() => {
+    pushState().then(setPush);
+  }, []);
+
+  async function scheduleNotification() {
+    if (push === "ios_add_to_home") return setPushHelp("ios");
+    if (push === "blocked") return setPushHelp("blocked");
+    setSaving(true);
+    setError("");
+    try {
+      await enablePush();
+      await api.pushReminder(r.claim_id, r.id);
+    } catch (err) {
+      setError(err instanceof PushError ? err.message : errorMessage(err, "לא הצלחנו לקבוע את ההתראה. אפשר לנסות שוב."));
+      setSaving(false);
+    }
+  }
   const [number, setNumber] = useState(phone ?? "");
   const [consent, setConsent] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,9 +125,31 @@ export function ReminderCard({ reminder: r, phone, onChoice }: Props) {
         <span className="task-icon">⏰</span>
         <div className="grow">
           <strong>{r.title}</strong>
-          <p className="small">{reminderDay(r)}, 9:00 · {whatsapp ? "להזכיר לך?" : "להוסיף ליומן?"}</p>
+          <p className="small">{reminderDay(r)}, 9:00 · {whatsapp || push !== "off" ? "להזכיר לך?" : "להוסיף ליומן?"}</p>
         </div>
       </div>
+      {pushHelp && (
+        <div className="push-help small">
+          {pushHelp === "ios" ? (
+            <>
+              <strong>באייפון, התראות עובדות מהאפליקציה במסך הבית:</strong>
+              <ol>
+                <li>
+                  בספארי לוחצים על כפתור השיתוף <span aria-hidden="true">⬆️</span>
+                </li>
+                <li>בוחרים "הוספה למסך הבית"</li>
+                <li>פותחים את InsurAgent מהמסך הבית, וחוזרים לתזכורת הזו</li>
+              </ol>
+            </>
+          ) : (
+            <p>ההתראות חסומות לאתר הזה. אפשר לאשר אותן בהגדרות האתר בדפדפן (סמל המנעול ליד הכתובת), ואז לנסות שוב.</p>
+          )}
+          <button className="link small" onClick={() => setPushHelp(null)}>
+            הבנתי
+          </button>
+        </div>
+      )}
+      {error && !asking && <p className="small error">{error}</p>}
       {asking ? (
         <div className="whatsapp-form">
           <label>
@@ -129,6 +172,11 @@ export function ReminderCard({ reminder: r, phone, onChoice }: Props) {
         </div>
       ) : (
       <div className="task-actions reminder-actions">
+        {push !== "off" && push !== "unsupported" && (
+          <button className="primary" onClick={scheduleNotification} disabled={saving}>
+            {saving ? "מפעיל…" : "🔔 התראה בטלפון"}
+          </button>
+        )}
         {whatsapp && (
           <button className="whatsapp-btn" onClick={() => setAsking(true)}>
             📲 בוואטסאפ
@@ -146,7 +194,7 @@ export function ReminderCard({ reminder: r, phone, onChoice }: Props) {
           יומן אחר / iPhone
         </button>
         <a
-          className="button primary"
+          className={push === "off" || push === "unsupported" ? "button primary" : "button"}
           href={googleCalendarUrl(r)}
           target="_blank"
           rel="noreferrer"

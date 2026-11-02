@@ -6,6 +6,7 @@ import { defineSecret } from "firebase-functions/params";
 import { createApp } from "./app";
 import { dispatchToQueue, drainInbox, sweepStranded } from "./agent/agent";
 import { sendDueReminders } from "./whatsapp";
+import { sendDuePushReminders } from "./push";
 
 // Must be compatible with the Firestore location (europe-west1 works with eur3 and europe-west1).
 const REGION = "europe-west1";
@@ -65,10 +66,14 @@ export const agent = onDocumentCreated(
 // .env.functions): the deploy asks for a value for every declared secret, even an unused one.
 const sweeperSecrets = process.env.WHATSAPP_PHONE_NUMBER_ID ? [anthropicKey, defineSecret("WHATSAPP_TOKEN")] : [anthropicKey];
 
-/** Recovers agent input stranded by a crash or timeout, and sends WhatsApp reminders that are due. */
+/** Recovers agent input stranded by a crash or timeout, and sends reminders that are due. */
 export const sweeper = onSchedule(
   { schedule: "every 10 minutes", region: REGION, secrets: sweeperSecrets, timeoutSeconds: 540, memory: "512MiB" },
   async () => {
-    await Promise.all([sweepStranded(), sendDueReminders().catch((err) => console.error("WhatsApp reminders failed", err))]);
+    await Promise.all([
+      sweepStranded(),
+      sendDueReminders().catch((err) => console.error("WhatsApp reminders failed", err)),
+      sendDuePushReminders().catch((err) => console.error("push reminders failed", err)),
+    ]);
   },
 );
