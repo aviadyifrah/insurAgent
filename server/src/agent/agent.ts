@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { firestore } from "../firebase";
 import { recordUsage } from "../costs";
 import { child, claims, getClaim, getUser, list, now, updateClaim, type DocumentRow } from "../store";
+import { withoutWebSearch } from "./history";
 import { SYSTEM_PROMPT } from "./prompt";
 import { executeTool, toolDefinitions } from "./tools";
 
@@ -128,15 +129,6 @@ async function loadHistory(claimId: string): Promise<MessageParam[]> {
     .filter((m) => typeof m.content === "string" || m.content.length > 0);
 }
 
-const WEB_BLOCKS = new Set(["server_tool_use", "web_search_tool_result", "web_fetch_tool_result"]);
-
-/** The agent once had web search; older claims' history still holds those steps, which the API rejects without the tool. */
-function withoutWebSearch(content: string | ContentBlockParam[]): string | ContentBlockParam[] {
-  if (typeof content === "string") return content;
-  return content
-    .filter((b) => !WEB_BLOCKS.has(b.type))
-    .map((b) => (b.type === "text" && b.citations ? { ...b, citations: null } : b));
-}
 
 async function saveTurn(claimId: string, seq: number, message: MessageParam) {
   await child(claimId, "turns")
