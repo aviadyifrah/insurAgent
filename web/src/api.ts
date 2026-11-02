@@ -55,6 +55,9 @@ async function prepareFile(file: File): Promise<File> {
 /** First message of a new claim, handed from the home screen to the claim screen. */
 export const pendingFirstMessage = new Map<string, { text: string; documentIds: string[] }>();
 
+/** A task picked on the home screen, opened when its claim screen loads (claim id → task id). */
+export const pendingTaskFocus = new Map<string, string>();
+
 export const api = {
   config: () => request<{ access_code_required: boolean }>("/config"),
   me: () => request<User>("/me"),

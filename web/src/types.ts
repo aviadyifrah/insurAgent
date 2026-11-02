@@ -37,6 +37,7 @@ export interface Claim {
   provider: string | null;
   treatment_date: string | null;
   insurer: string | null;
+  insurer_key?: string | null;
   policy_number: string | null;
   claim_type: string | null;
   amount: number | null;
@@ -59,6 +60,7 @@ export interface ClaimSummary extends Claim {
 
 export interface Requirement {
   id: string;
+  key: string | null;
   title: string;
   description: string | null;
   required: boolean;

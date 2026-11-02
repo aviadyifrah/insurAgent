@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, errorMessage, pendingFirstMessage } from "../api";
+import { api, ApiError, errorMessage, pendingFirstMessage, pendingTaskFocus } from "../api";
 import { WhatsAppButton } from "../components/WhatsAppButton";
 import { navigate } from "../App";
 import { Disclaimer } from "../components/Disclaimer";
@@ -80,7 +80,7 @@ export function Home({ user }: { user: User }) {
           <h2>📋 מחכה לך ({tasks.length})</h2>
           <ul className="list">
             {tasks.map((t) => (
-              <li key={t.id} className="card row" onClick={() => navigate(`/claims/${t.claim_id}`)}>
+              <li key={t.id} className="card row" onClick={() => (pendingTaskFocus.set(t.claim_id, t.id), navigate(`/claims/${t.claim_id}`))}>
                 <div>
                   <strong>{t.title}</strong>
                   <div className="muted small">{t.claim_title}</div>

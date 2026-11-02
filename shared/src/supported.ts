@@ -5,7 +5,8 @@
 export interface SupportedGroup {
   claim_type: "dental" | "*";
   title: string;
-  insurers: { key: string; name: string }[];
+  /** claim_url: the insurer's official page for filing this kind of claim, when we have checked it. */
+  insurers: { key: string; name: string; claim_url?: string }[];
 }
 
 export const SUPPORTED: SupportedGroup[] = [
@@ -15,7 +16,7 @@ export const SUPPORTED: SupportedGroup[] = [
     insurers: [
       { key: "harel", name: "הראל" },
       { key: "phoenix", name: "הפניקס" },
-      { key: "menora", name: "מנורה מבטחים" },
+      { key: "menora", name: "מנורה מבטחים", claim_url: "https://www.menoramivt.co.il/claims/claims-dental-lobby/claims-dental-preservative" },
       { key: "migdal", name: "מגדל" },
       { key: "clal", name: "כלל" },
     ],
@@ -32,3 +33,10 @@ export const SUPPORTED: SupportedGroup[] = [
     ],
   },
 ];
+
+/** The insurer's page for filing this claim, if known (dental claims use the dental group, others the general one). */
+export function insurerClaimPage(insurerKey: string | null, claimType: string | null): { name: string; url: string } | null {
+  const group = SUPPORTED.find((g) => g.claim_type === (claimType === "dental" ? "dental" : "*"));
+  const insurer = group?.insurers.find((i) => i.key === insurerKey);
+  return insurer?.claim_url ? { name: insurer.name, url: insurer.claim_url } : null;
+}

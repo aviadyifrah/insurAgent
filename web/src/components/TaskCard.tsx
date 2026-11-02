@@ -5,6 +5,7 @@ import type { MimeAttachment } from "@insuragent/shared/mime";
 import { buildPackagePdf, packageFilename } from "../claimPackage";
 import { documentStore } from "../documentStore";
 import { createGmailDraft, gmailToken, GmailError } from "../gmail";
+import { insurerClaimPage } from "@insuragent/shared/supported";
 import { DocLink } from "./DocLink";
 import { SignaturePad } from "./SignaturePad";
 
@@ -13,16 +14,28 @@ interface Props {
   view: ClaimView;
   /** Runs a request while showing the agent as busy; results arrive through the live view. */
   act: (fn: () => Promise<unknown>) => Promise<void>;
+  /** Picked on the home screen: scroll to it and open it. */
+  focused?: boolean;
 }
 
 const ICON: Record<Task["type"], string> = { upload: "📷", sign: "✍️", send_email: "📧", action: "✔️" };
 
-export function TaskCard({ task, view, act }: Props) {
+export function TaskCard({ task, view, act, focused }: Props) {
   const [open, setOpen] = useState(false);
+  const card = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const email = view.emails.find((e) => e.id === task.email_draft_id);
   const claimId = view.claim.id;
+  // A task to fill in the insurer's own form gets a button to the insurer's claim page, when we know it.
+  const requirement = view.requirements.find((r) => r.id === task.requirement_id);
+  const insurerPage = requirement?.key === "insurer_form" ? insurerClaimPage(view.claim.insurer_key ?? null, view.claim.claim_type) : null;
+
+  useEffect(() => {
+    if (!focused) return;
+    card.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (task.type === "send_email" || task.type === "sign") setOpen(true);
+  }, [focused]);
 
   function run(fn: () => Promise<unknown>) {
     setOpen(false);
@@ -47,7 +60,7 @@ export function TaskCard({ task, view, act }: Props) {
   }[task.type];
 
   return (
-    <div className="card task">
+    <div className={`card task${focused ? " focused" : ""}`} ref={card}>
       <div className="task-head">
         <span className="task-icon">{ICON[task.type]}</span>
         <div className="grow">
@@ -56,6 +69,11 @@ export function TaskCard({ task, view, act }: Props) {
         </div>
       </div>
       <div className="task-actions">
+        {insurerPage && (
+          <a className="button" href={insurerPage.url} target="_blank" rel="noreferrer">
+            🔗 לאתר {insurerPage.name}
+          </a>
+        )}
         {task.type === "upload" && (
           <>
             <button onClick={() => fileInput.current?.click()}>📎 קובץ</button>

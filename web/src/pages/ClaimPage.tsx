@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, errorMessage, pendingFirstMessage } from "../api";
+import { api, errorMessage, pendingFirstMessage, pendingTaskFocus } from "../api";
 import { navigate } from "../App";
 import { useClaimLive } from "../useClaimLive";
 import { SUPPORT_PHONE_DISPLAY, whatsappLink } from "../support";
@@ -75,7 +75,20 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
     act(() => api.sendMessage(claimId, first.text, first.documentIds));
   }, [claimId]);
 
+  // A task picked on the home screen: its card scrolls into view and opens, so the first jump to the
+  // end of the chat is skipped.
+  const [focusTask] = useState(() => {
+    const id = pendingTaskFocus.get(claimId);
+    pendingTaskFocus.delete(claimId);
+    return id;
+  });
+  const holdChatScroll = useRef(!!focusTask);
+
   useEffect(() => {
+    if (holdChatScroll.current) {
+      if (view) holdChatScroll.current = false;
+      return;
+    }
     chatEnd.current?.scrollIntoView({ behavior: "smooth" });
   }, [view?.chat.length, view?.reminders.length, view?.claim.agent_status, busy, tab]);
 
@@ -193,7 +206,7 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
       {openTasks.length > 0 && (
         <section className="tasks">
           {openTasks.map((t) => (
-            <TaskCard key={t.id} task={t} view={view} act={act} />
+            <TaskCard key={t.id} task={t} view={view} act={act} focused={t.id === focusTask} />
           ))}
         </section>
       )}
