@@ -109,9 +109,14 @@ const tools = [
       insurer_key: z.string().optional(),
       claim_type: CLAIM_TYPE.optional(),
       template_id: z.string().optional().describe("Load a template by id instead, e.g. 'generic-health'"),
+      replace: z
+        .boolean()
+        .optional()
+        .describe("Swap the claim's current checklist for this one (when claim_state.template_check says a better list exists). Items with a document attached, and items the user added, are kept."),
     }),
     run: async (input, ctx) => {
-      if ((await requirementsOf(ctx.claim.id)).length > 0) return { ok: false, error: "requirements already loaded for this claim" };
+      const existing = await requirementsOf(ctx.claim.id);
+      if (existing.length > 0 && !input.replace) return { ok: false, error: "requirements already loaded for this claim; pass replace: true to swap the list" };
       const tpl = input.template_id
         ? templateById(input.template_id)
         : input.insurer_key && input.claim_type
@@ -125,7 +130,12 @@ const tools = [
         };
       }
       const batch = child(ctx.claim.id, "requirements").firestore.batch();
+      // On a swap, keep what already holds a document or was added by the user; drop the rest.
+      const kept = existing.filter((r) => r.document_id || r.added_by_user);
+      for (const r of existing) if (!kept.includes(r)) batch.delete(child(ctx.claim.id, "requirements").doc(r.id));
+      const keptKeys = new Set(kept.map((r) => r.key).filter(Boolean));
       tpl.requirements.forEach((r, i) =>
+        !keptKeys.has(r.key) &&
         batch.create(child(ctx.claim.id, "requirements").doc(), {
           user_id: ctx.claim.user_id,
           claim_id: ctx.claim.id,
@@ -148,6 +158,7 @@ const tools = [
         specific_to_claim_type: tpl.claim_type !== "*",
         verified: tpl.verified,
         submission: tpl.submission,
+        ...(kept.length > 0 && { kept_from_previous_list: kept.map((r) => r.title) }),
         requirements: (await requirementsOf(ctx.claim.id)).map(({ id, key, title, description, required, needs_signature }) => ({
           id,
           key,

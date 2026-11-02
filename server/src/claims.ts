@@ -14,6 +14,26 @@ import {
   type Claim,
   type Task,
 } from "./store";
+import { findTemplate, templateById } from "./knowledge";
+
+const CLAIM_TYPES = ["dental", "optics", "paramedical", "consultation", "other"];
+
+/**
+ * Whether the claim's checklist is the right one. Claims opened before a template existed (or with
+ * a free-text claim type) can hold a general list; the agent swaps it with replace: true.
+ */
+function templateCheck(claim: Claim): string {
+  if (!claim.template_id) return "no list loaded yet";
+  if (claim.claim_type && !CLAIM_TYPES.includes(claim.claim_type)) {
+    return `claim_type "${claim.claim_type}" isn't one of ${CLAIM_TYPES.join(" | ")}: correct it with update_claim_details, then check the list again`;
+  }
+  const best = claim.insurer_key && claim.claim_type ? findTemplate(claim.insurer_key, claim.claim_type) : undefined;
+  if (best && best.id !== claim.template_id) {
+    return `a better list exists for this claim: load_requirements_template(template_id "${best.id}", replace: true)`;
+  }
+  const current = templateById(claim.template_id);
+  return current ? `ok (${current.id})` : "ok";
+}
 
 export async function createTask(
   claim: Claim,
@@ -83,6 +103,7 @@ export async function claimSnapshot(claim: Claim): Promise<string> {
       status: claim.status,
       outcome: claim.outcome ?? null,
     },
+    template_check: templateCheck(claim),
     family_members: (user?.family ?? []).map((m) => ({ name: m.name, relation: m.relation, has_id_number: !!m.id_number })),
     // From Har HaBituach, when the user uploaded it; only cover they might claim from.
     policies: user?.policies
