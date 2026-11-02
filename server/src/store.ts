@@ -28,6 +28,9 @@ export interface User {
   /** From the Har HaBituach report the user uploaded (the file itself isn't kept). */
   policies?: Policy[];
   policies_updated_at?: string;
+  /** The number the user agreed to get WhatsApp reminders on, and when they agreed. */
+  whatsapp_phone?: string;
+  whatsapp_opt_in_at?: string;
   created_at: string;
 }
 
@@ -155,6 +158,11 @@ export interface Reminder {
   due_at: string; // ISO, 09:00 Israel time on the chosen day
   status: "suggested" | "added" | "dismissed";
   created_at: string;
+  /** Set when the user chose a WhatsApp reminder instead of (or besides) their calendar. */
+  whatsapp_status?: "scheduled" | "sent" | "failed" | "cancelled";
+  whatsapp_to?: string;
+  whatsapp_sent_at?: string;
+  whatsapp_error?: string;
 }
 
 export interface ChatMessage {

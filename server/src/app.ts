@@ -11,6 +11,7 @@ import { readPolicies, type PolicySource } from "./agent/policies";
 import { FieldValue } from "firebase-admin/firestore";
 import { recordUsage } from "./costs";
 import { consumeQuota } from "./quota";
+import { israeliMobile, whatsappEnabled } from "./whatsapp";
 import {
   add,
   child,
@@ -67,7 +68,7 @@ export function createApp(config: AppConfig) {
   });
 
   api.get("/health", (c) => c.json({ ok: true }));
-  api.get("/config", (c) => c.json({ access_code_required: config.accessCode() !== "" }));
+  api.get("/config", (c) => c.json({ access_code_required: config.accessCode() !== "", whatsapp_reminders: whatsappEnabled() }));
 
   // --- Auth: Firebase ID token on every request ---
 
@@ -347,8 +348,26 @@ export function createApp(config: AppConfig) {
     const claim = await claimOr404(c);
     const { status } = z.object({ status: z.enum(["added", "dismissed"]) }).parse(await c.req.json());
     const ref = child(claim.id, "reminders").doc(c.req.param("reminderId"));
-    if (!(await ref.get()).exists) throw new HTTPException(404, { message: "reminder not found" });
-    await ref.update({ status });
+    const reminder = await getDoc<Reminder>(ref);
+    if (!reminder) throw new HTTPException(404, { message: "reminder not found" });
+    await ref.update({ status, ...(status === "dismissed" && reminder.whatsapp_status === "scheduled" && { whatsapp_status: "cancelled" }) });
+    return c.json({ ok: true });
+  });
+
+  /** The user asked for this reminder on WhatsApp, agreeing to get it on this number. */
+  api.post("/claims/:id/reminders/:reminderId/whatsapp", async (c) => {
+    if (!whatsappEnabled()) throw new HTTPException(400, { message: "whatsapp reminders are off" });
+    const user = c.get("user");
+    const claim = await claimOr404(c);
+    const { phone, consent } = z.object({ phone: z.string().max(30), consent: z.literal(true) }).parse(await c.req.json());
+    const to = israeliMobile(phone);
+    if (!to) return c.json({ error: "bad_phone" }, 400);
+    const ref = child(claim.id, "reminders").doc(c.req.param("reminderId"));
+    const reminder = await getDoc<Reminder>(ref);
+    if (!reminder) throw new HTTPException(404, { message: "reminder not found" });
+    if (reminder.due_at <= now()) return c.json({ error: "reminder_past" }, 400);
+    await users.doc(user.id).update({ whatsapp_phone: to, whatsapp_opt_in_at: now(), ...(!user.phone && { phone }) });
+    await ref.update({ status: "added", whatsapp_status: "scheduled", whatsapp_to: to });
     return c.json({ ok: true });
   });
 

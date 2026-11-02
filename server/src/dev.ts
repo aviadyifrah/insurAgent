@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
 import { dispatchInBackground, sweepStranded } from "./agent/agent";
+import { sendDueReminders } from "./whatsapp";
 
 const app = createApp({ accessCode: () => process.env.ACCESS_CODE ?? "", dispatch: dispatchInBackground });
 
@@ -17,3 +18,4 @@ serve({ fetch: app.fetch, port }, () => console.log(`InsurAgent server on http:/
 
 // In production a scheduled function sweeps stranded agent input; locally a timer does.
 setInterval(() => sweepStranded().catch((err) => console.error("sweep failed", err)), 2 * 60 * 1000);
+setInterval(() => sendDueReminders().catch((err) => console.error("WhatsApp reminders failed", err)), 60 * 1000);

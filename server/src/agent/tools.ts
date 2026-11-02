@@ -380,9 +380,11 @@ const tools = [
   tool({
     name: "suggest_reminder",
     description:
-      "Offer the user a reminder they can add to their own phone calendar with one tap (the app shows a card with calendar buttons; the app itself does not send reminders). It is set for 09:00 Israel time on the chosen day; the user can change the time in their calendar. Use when the user asks to be reminded, or at a natural follow-up moment (see the system prompt). Don't offer a reminder that duplicates a pending or dismissed one in claim_state.",
+      "Offer the user a reminder: the app shows a card where they add it to their phone calendar with one tap, or (when available) choose to get it on WhatsApp. It is set for 09:00 Israel time on the chosen day. Use when the user asks to be reminded, or at a natural follow-up moment (see the system prompt). Don't offer a reminder that duplicates a pending or dismissed one in claim_state.",
     schema: z.object({
-      title: z.string().describe("Short Hebrew calendar title, e.g. 'לבדוק אם המרפאה שלחה פירוט טיפולים'"),
+      title: z
+        .string()
+        .describe("Short Hebrew title, e.g. 'לבדוק אם המרפאה שלחה פירוט טיפולים'. It may be sent on WhatsApp: no diagnosis, treatment details or amounts"),
       details: z.string().optional().describe("One Hebrew sentence of context for the calendar entry"),
       days_from_now: z.number().int().min(1).max(180).optional(),
       date: z.string().optional().describe("YYYY-MM-DD; use instead of days_from_now for a specific day"),

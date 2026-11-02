@@ -397,3 +397,8 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 .task.focused { animation: task-focus 1.6s ease-out 2; }
 @keyframes task-focus { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 60%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
 .task-actions { flex-wrap: wrap; }
+
+/* WhatsApp reminders */
+.whatsapp-btn { background: #25d366; color: #fff; border-color: #25d366; font-weight: 600; }
+.whatsapp-form { margin-top: 8px; }
+.whatsapp-form label { margin-bottom: 0.6rem; }

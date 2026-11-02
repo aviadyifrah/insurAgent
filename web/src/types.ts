@@ -134,6 +134,7 @@ export interface Reminder {
   due_at: string;
   status: "suggested" | "added" | "dismissed";
   created_at: string;
+  whatsapp_status?: "scheduled" | "sent" | "failed" | "cancelled";
 }
 
 export interface AdminOverview {

@@ -17,6 +17,8 @@ export function errorMessage(err: unknown, fallback = "משהו השתבש. אפ
   if (err instanceof ApiError && err.message === "daily_limit") return "הגעת למכסה היומית. אפשר להמשיך מחר.";
   if (err instanceof ApiError && err.message === "service_busy") return "השירות עמוס היום. אפשר לנסות שוב מחר.";
   if (err instanceof ApiError && err.message === "claim_limit") return "בגרסת הניסיון אפשר לפתוח תיק אחד. לתיק נוסף אפשר לפנות אלינו בוואטסאפ.";
+  if (err instanceof ApiError && err.message === "bad_phone") return "צריך מספר נייד ישראלי, למשל 050-1234567.";
+  if (err instanceof ApiError && err.message === "reminder_past") return "מועד התזכורת כבר עבר.";
   if (err instanceof ApiError && err.message === "not_a_policy_report") return "לא מצאנו בקובץ רשימת פוליסות. צריך את הקובץ מהר הביטוח.";
   if (err instanceof ApiError && err.message === "unreadable_spreadsheet")
     return "לא הצלחנו לקרוא את קובץ האקסל. אפשר לשמור אותו כ-xlsx, או להעלות צילום מסך או PDF של הדוח.";
@@ -59,7 +61,7 @@ export const pendingFirstMessage = new Map<string, { text: string; documentIds: 
 export const pendingTaskFocus = new Map<string, string>();
 
 export const api = {
-  config: () => request<{ access_code_required: boolean }>("/config"),
+  config: () => request<{ access_code_required: boolean; whatsapp_reminders?: boolean }>("/config"),
   me: () => request<User>("/me"),
   consent: (access_code: string) => post<User>("/consent", { consent: true, access_code }),
   updateMe: (patch: Partial<User>) => request<User>("/me", { method: "PUT", body: JSON.stringify(patch) }),
@@ -110,6 +112,8 @@ export const api = {
     const ref = await documentStore.put(blob, "signature.png");
     return post<{ ok: boolean }>(`/claims/${claimId}/tasks/${taskId}/signature`, { storage: documentStore.kind, storage_ref: ref });
   },
+  whatsappReminder: (claimId: string, reminderId: string, phone: string) =>
+    post<{ ok: boolean }>(`/claims/${claimId}/reminders/${reminderId}/whatsapp`, { phone, consent: true }),
   setReminder: (claimId: string, reminderId: string, status: "added" | "dismissed") =>
     post<{ ok: boolean }>(`/claims/${claimId}/reminders/${reminderId}`, { status }),
   patchClaim: (claimId: string, patch: Record<string, unknown>) =>

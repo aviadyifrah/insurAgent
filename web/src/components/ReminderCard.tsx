@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { api, errorMessage } from "../api";
 import type { Reminder } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -54,23 +56,84 @@ function downloadIcs(r: Reminder) {
 export const reminderDay = (r: Reminder) =>
   new Date(r.due_at).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Jerusalem" });
 
+// Whether the server offers WhatsApp reminders; asked once per visit.
+let whatsappOffered: Promise<boolean> | null = null;
+function useWhatsappOffered() {
+  const [offered, setOffered] = useState(false);
+  useEffect(() => {
+    whatsappOffered ??= api
+      .config()
+      .then((c) => !!c.whatsapp_reminders)
+      .catch(() => false);
+    whatsappOffered.then(setOffered);
+  }, []);
+  return offered;
+}
+
 interface Props {
   reminder: Reminder;
+  /** The user's saved phone, to fill in the WhatsApp number. */
+  phone: string | null;
   onChoice: (status: "added" | "dismissed") => void;
 }
 
-/** A suggested reminder: one tap adds it to the phone's calendar. */
-export function ReminderCard({ reminder: r, onChoice }: Props) {
+/** A suggested reminder: one tap adds it to the phone's calendar, or schedules it on WhatsApp. */
+export function ReminderCard({ reminder: r, phone, onChoice }: Props) {
+  const whatsapp = useWhatsappOffered();
+  const [asking, setAsking] = useState(false);
+  const [number, setNumber] = useState(phone ?? "");
+  const [consent, setConsent] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function scheduleWhatsapp() {
+    setSaving(true);
+    setError("");
+    try {
+      await api.whatsappReminder(r.claim_id, r.id, number);
+      // The card disappears once the reminder is no longer "suggested" (live update).
+    } catch (err) {
+      setError(errorMessage(err, "לא הצלחנו לקבוע את התזכורת. אפשר לנסות שוב."));
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="card reminder">
       <div className="task-head">
         <span className="task-icon">⏰</span>
         <div className="grow">
           <strong>{r.title}</strong>
-          <p className="small">{reminderDay(r)}, 9:00 · להוסיף ליומן?</p>
+          <p className="small">{reminderDay(r)}, 9:00 · {whatsapp ? "להזכיר לך?" : "להוסיף ליומן?"}</p>
         </div>
       </div>
+      {asking ? (
+        <div className="whatsapp-form">
+          <label>
+            מספר הנייד לוואטסאפ
+            <input value={number} onChange={(e) => setNumber(e.target.value)} dir="ltr" inputMode="tel" placeholder="050-1234567" />
+          </label>
+          <label className="consent">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+            <span>אני רוצה לקבל מ-InsurAgent תזכורת בוואטסאפ למספר הזה. בהודעה יופיעו רק כותרת התזכורת וקישור לתיק.</span>
+          </label>
+          {error && <p className="small error">{error}</p>}
+          <div className="task-actions">
+            <button className="link" onClick={() => setAsking(false)}>
+              חזרה
+            </button>
+            <button className="whatsapp-btn" disabled={!consent || !number.trim() || saving} onClick={scheduleWhatsapp}>
+              {saving ? "קובע…" : "קבע תזכורת"}
+            </button>
+          </div>
+        </div>
+      ) : (
       <div className="task-actions reminder-actions">
+        {whatsapp && (
+          <button className="whatsapp-btn" onClick={() => setAsking(true)}>
+            📲 בוואטסאפ
+          </button>
+        )}
         <button className="link" onClick={() => onChoice("dismissed")}>
           לא תודה
         </button>
@@ -92,6 +155,7 @@ export function ReminderCard({ reminder: r, onChoice }: Props) {
           Google יומן
         </a>
       </div>
+      )}
     </div>
   );
 }

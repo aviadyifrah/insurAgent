@@ -229,7 +229,7 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
               </div>
             ) : (
               // Reminder suggestions sit in the conversation, where the agent mentions them.
-              <ReminderCard key={item.r.id} reminder={item.r} onChoice={(status) => api.setReminder(claimId, item.r.id, status).catch(() => {})} />
+              <ReminderCard key={item.r.id} reminder={item.r} phone={user.phone} onChoice={(status) => api.setReminder(claimId, item.r.id, status).catch(() => {})} />
             ),
           )}
           {(busy || agentWorking) && <div className="bubble assistant typing">הסוכן עובד…</div>}
@@ -292,11 +292,17 @@ export function ClaimPage({ claimId, user }: { claimId: string; user: User }) {
 
           {addedReminders.length > 0 && (
             <>
-              <h3>תזכורות ביומן</h3>
+              <h3>תזכורות</h3>
               <ul className="list">
                 {addedReminders.map((r) => (
                   <li key={r.id}>
-                    ⏰ {r.title} <span className="small muted">· {reminderDay(r)}</span>
+                    {r.whatsapp_status === "scheduled" || r.whatsapp_status === "sent" ? "📲" : "⏰"} {r.title}{" "}
+                    <span className="small muted">
+                      · {reminderDay(r)}
+                      {r.whatsapp_status === "scheduled" && " · בוואטסאפ"}
+                      {r.whatsapp_status === "sent" && " · נשלחה בוואטסאפ"}
+                      {r.whatsapp_status === "failed" && " · השליחה בוואטסאפ נכשלה"}
+                    </span>
                   </li>
                 ))}
               </ul>
