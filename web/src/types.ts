@@ -148,6 +148,8 @@ export interface AdminOverview {
     avg_cost_per_claim: number;
     today_messages: number;
     today_uploads: number;
+    today_sms: number;
+    sms_daily_limit: number;
   };
   users: {
     id: string;

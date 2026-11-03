@@ -45,6 +45,7 @@ export function Admin() {
             <Tile label="עלות ממוצעת לתיק" value={usd(data.totals.avg_cost_per_claim)} />
             <Tile label="הודעות היום" value={data.totals.today_messages} />
             <Tile label="העלאות היום" value={data.totals.today_uploads} />
+            <Tile label="SMS היום" value={`${data.totals.today_sms} / ${data.totals.sms_daily_limit}`} />
           </section>
 
           <h2>בקשות להוספה</h2>

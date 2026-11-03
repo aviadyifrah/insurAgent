@@ -13,6 +13,7 @@ import { recordUsage } from "./costs";
 import { consumeQuota } from "./quota";
 import { israeliMobile, whatsappEnabled } from "./whatsapp";
 import { addPushToken, pushVapidKey, removePushToken } from "./push";
+import { SMS_LIMITS, smsCountToday } from "./smsGuard";
 import {
   add,
   child,
@@ -625,6 +626,8 @@ export function createApp(config: AppConfig) {
         avg_cost_per_claim: engaged.length ? engaged.reduce((s, cl) => s + (cl.cost_usd ?? 0), 0) / engaged.length : 0,
         today_messages: (today.messages as number | undefined) ?? 0,
         today_uploads: (today.uploads as number | undefined) ?? 0,
+        today_sms: await smsCountToday(),
+        sms_daily_limit: SMS_LIMITS.daily,
       },
       users: rows,
       requests,

@@ -12,6 +12,10 @@ export function toE164(phone: string): string | null {
 
 function errorText(err: unknown): string {
   const code = (err as { code?: string }).code ?? "";
+  const message = String((err as { message?: string }).message ?? "");
+  // Our daily SMS caps (server/src/smsGuard.ts) reject the request before the SMS goes out.
+  if (message.includes("number_limit")) return "נשלחו היום יותר מדי קודים למספר הזה. אפשר לנסות שוב מחר, או להיכנס עם Google.";
+  if (message.includes("daily_limit") || message.includes("BLOCKING_FUNCTION")) return "הכניסה עם SMS עמוסה כרגע. אפשר להיכנס עם Google, או לנסות שוב מחר.";
   if (code === "auth/invalid-phone-number") return "המספר לא תקין. צריך מספר נייד ישראלי, למשל 050-1234567.";
   if (code === "auth/invalid-verification-code") return "הקוד לא נכון. אפשר לבדוק ולנסות שוב.";
   if (code === "auth/code-expired") return "הקוד פג תוקף. אפשר לשלוח קוד חדש.";

@@ -7,6 +7,8 @@ import { createApp } from "./app";
 import { dispatchToQueue, drainInbox, sweepStranded } from "./agent/agent";
 import { sendDueReminders } from "./whatsapp";
 import { sendDuePushReminders } from "./push";
+import { beforeSmsSent, HttpsError } from "firebase-functions/v2/identity";
+import { alertAdmins, countSms } from "./smsGuard";
 
 // Must be compatible with the Firestore location (europe-west1 works with eur3 and europe-west1).
 const REGION = "europe-west1";
@@ -77,3 +79,20 @@ export const sweeper = onSchedule(
     ]);
   },
 );
+
+/**
+ * Runs before every sign-in SMS: enforces the daily SMS caps and alerts the admins at a threshold.
+ * Blocking functions need Identity Platform, so it's deployed only with SMS_GUARD=on in .env.functions.
+ */
+export const smsGuard =
+  process.env.SMS_GUARD === "on"
+    ? beforeSmsSent({ region: REGION }, async (event) => {
+        const phone = event.additionalUserInfo?.phoneNumber ?? event.data?.phoneNumber ?? "unknown";
+        const decision = await countSms(phone);
+        if (!decision.allow) {
+          if (decision.reason === "daily_limit") await alertAdmins("הגעתם למכסת ה-SMS היומית. כניסות עם טלפון חסומות עד מחר.");
+          throw new HttpsError("resource-exhausted", decision.reason);
+        }
+        if (decision.alert) await alertAdmins(`נשלחו היום ${decision.count} הודעות SMS לכניסה. מכאן Google מחייבת על כל SMS.`);
+      })
+    : undefined;
