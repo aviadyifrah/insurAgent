@@ -6,7 +6,7 @@
  *
  * Reading mail (finding receipts) can be added the same way later, with a read scope.
  */
-import { GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
+import { GoogleAuthProvider, linkWithPopup, reauthenticateWithPopup } from "firebase/auth";
 import { buildMime, type MimeAttachment } from "@insuragent/shared/mime";
 import { auth } from "./firebase";
 
@@ -24,9 +24,11 @@ export async function gmailToken(): Promise<string> {
   if (!user) throw new GmailError("צריך להתחבר מחדש.");
   const provider = new GoogleAuthProvider();
   provider.addScope(COMPOSE_SCOPE);
-  provider.setCustomParameters({ login_hint: user.email ?? "" });
+  if (user.email) provider.setCustomParameters({ login_hint: user.email });
+  // Someone who signed in with their phone has no Google account on the app yet: link one.
+  const hasGoogle = user.providerData.some((p) => p.providerId === GoogleAuthProvider.PROVIDER_ID);
   try {
-    const result = await reauthenticateWithPopup(user, provider);
+    const result = hasGoogle ? await reauthenticateWithPopup(user, provider) : await linkWithPopup(user, provider);
     const token = GoogleAuthProvider.credentialFromResult(result)?.accessToken;
     if (!token) throw new GmailError("לא התקבל אישור מ-Google.");
     cached = { token, expires: Date.now() + TOKEN_TTL_MS };
@@ -35,6 +37,8 @@ export async function gmailToken(): Promise<string> {
     if (err instanceof GmailError) throw err;
     const code = (err as { code?: string }).code ?? "";
     if (code === "auth/user-mismatch") throw new GmailError("צריך לבחור את אותו חשבון Google שאיתו נכנסתם לאפליקציה.");
+    if (code === "auth/credential-already-in-use" || code === "auth/email-already-in-use")
+      throw new GmailError("חשבון ה-Google הזה כבר רשום באפליקציה כמשתמש נפרד. אפשר לשלוח דרך אפליקציית מייל אחרת.");
     if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") throw new GmailError("החיבור ל-Gmail בוטל.");
     if (code === "auth/popup-blocked") throw new GmailError("הדפדפן חסם את החלון של Google. אפשר לאשר חלונות קופצים ולנסות שוב.");
     throw new GmailError("החיבור ל-Gmail לא הצליח. אפשר לנסות שוב.");

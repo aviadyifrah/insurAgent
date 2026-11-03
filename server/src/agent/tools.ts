@@ -54,7 +54,7 @@ async function reportToTeam(ctx: ToolContext, kind: TeamRequest["kind"], details
   await add<TeamRequest>(teamRequests, {
     kind,
     user_id: ctx.user.id,
-    user_email: ctx.user.email,
+    user_email: ctx.user.email || ctx.user.phone || "",
     claim_id: ctx.claim.id,
     insurer: ctx.claim.insurer ?? null,
     claim_type: ctx.claim.claim_type ?? null,

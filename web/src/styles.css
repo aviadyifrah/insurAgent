@@ -404,3 +404,8 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 .whatsapp-form label { margin-bottom: 0.6rem; }
 .push-help { background: var(--event); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
 .push-help ol { padding-inline-start: 1.2rem; margin: 6px 0; }
+
+/* Phone sign-in */
+.phone-signin-link { display: block; margin: 10px auto 0; font-size: 1rem; }
+.phone-signin label { margin-top: 8px; }
+.phone-signin input[inputmode="numeric"] { font-size: 1.4rem; letter-spacing: 0.3em; text-align: center; }

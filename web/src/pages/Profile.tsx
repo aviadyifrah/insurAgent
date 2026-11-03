@@ -71,7 +71,7 @@ function Policies({ user, onChange }: { user: User; onChange: (u: User) => void 
                 <strong>{p.insurer}</strong> · {p.branch}
                 {p.policy_number && (
                   <div className="muted small">
-                    פוליסה <bdi className="nowrap">{p.policy_number}</bdi>
+                    פוליסה <bdi className="nowrap" dir="ltr">{p.policy_number}</bdi>
                   </div>
                 )}
               </li>
@@ -156,10 +156,12 @@ export function Profile({ user, onChange }: { user: User; onChange: (u: User) =>
       </header>
       <form className="card" onSubmit={save}>
         <p className="muted small">הפרטים משמשים למילוי הדף המקדים לתביעה. הסוכן יבקש מה שחסר כשצריך.</p>
-        <label>
-          אימייל
-          <input value={user.email} disabled dir="ltr" />
-        </label>
+        {user.email && (
+          <label>
+            אימייל
+            <input value={user.email} disabled dir="ltr" />
+          </label>
+        )}
         {FIELDS.map((f) => (
           <label key={f.key}>
             {f.label}

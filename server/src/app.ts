@@ -50,7 +50,7 @@ export interface AppConfig {
   dispatch: Dispatch;
 }
 
-type Env = { Variables: { uid: string; email: string; user: User } };
+type Env = { Variables: { uid: string; email: string; phone: string; user: User } };
 
 const familyMember = z.object({
   name: z.string().min(1).max(100),
@@ -80,6 +80,7 @@ export function createApp(config: AppConfig) {
       const decoded = await auth.verifyIdToken(token);
       c.set("uid", decoded.uid);
       c.set("email", decoded.email ?? "");
+      c.set("phone", decoded.phone_number ?? "");
     } catch {
       return c.json({ error: "unauthorized" }, 401);
     }
@@ -108,7 +109,8 @@ export function createApp(config: AppConfig) {
         email: c.get("email"),
         full_name: null,
         id_number: null,
-        phone: null,
+        // Someone who signed in with their phone number starts with it saved, in local form (05X-XXXXXXX).
+        phone: localPhone(c.get("phone")),
         bank_details: null,
         family: [],
         created_at: now(),
@@ -600,7 +602,7 @@ export function createApp(config: AppConfig) {
         const theirs = (byUser.get(u.id) ?? []).filter((cl) => cl.engaged !== false);
         return {
           id: u.id,
-          email: u.email,
+          email: u.email || u.phone || "",
           full_name: u.full_name,
           created_at: u.created_at,
           claim_limit: claimLimit(u),
@@ -707,4 +709,11 @@ async function ownedDocuments(userId: string, ids: string[]): Promise<DocumentRo
 
 async function attachToClaim(docs: DocumentRow[], claimId: string) {
   await Promise.all(docs.filter((d) => d.claim_id == null).map((d) => documents.doc(d.id).update({ claim_id: claimId })));
+}
+
+/** +972501234567 → 050-1234567 (how the profile shows numbers); anything else as given, or null. */
+function localPhone(e164: string): string | null {
+  if (!e164) return null;
+  const m = e164.match(/^\+972(5\d)(\d{7})$/);
+  return m ? `0${m[1]}-${m[2]}` : e164;
 }
