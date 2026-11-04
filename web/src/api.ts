@@ -62,7 +62,7 @@ export const pendingFirstMessage = new Map<string, { text: string; documentIds: 
 export const pendingTaskFocus = new Map<string, string>();
 
 export const api = {
-  config: () => request<{ access_code_required: boolean; whatsapp_reminders?: boolean; push_vapid_key?: string }>("/config"),
+  config: () => request<{ access_code_required: boolean; whatsapp_reminders?: boolean; push_vapid_key?: string; phone_signin?: boolean }>("/config"),
   me: () => request<User>("/me"),
   consent: (access_code: string) => post<User>("/consent", { consent: true, access_code }),
   updateMe: (patch: Partial<User>) => request<User>("/me", { method: "PUT", body: JSON.stringify(patch) }),

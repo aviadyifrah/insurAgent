@@ -70,7 +70,9 @@ export function createApp(config: AppConfig) {
   });
 
   api.get("/health", (c) => c.json({ ok: true }));
-  api.get("/config", (c) => c.json({ access_code_required: config.accessCode() !== "", whatsapp_reminders: whatsappEnabled(), push_vapid_key: pushVapidKey() }));
+  api.get("/config", (c) =>
+    c.json({ access_code_required: config.accessCode() !== "", whatsapp_reminders: whatsappEnabled(), push_vapid_key: pushVapidKey(), phone_signin: process.env.PHONE_SIGNIN === "on" }),
+  );
 
   // --- Auth: Firebase ID token on every request ---
 

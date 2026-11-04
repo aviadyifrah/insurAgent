@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { api } from "../api";
 import { auth } from "../firebase";
 import { SUPPORTED } from "@insuragent/shared/supported";
 import { PhoneSignIn } from "../components/PhoneSignIn";
@@ -136,6 +137,11 @@ export function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [phoneOpen, setPhoneOpen] = useState(false);
+  // Phone sign-in is switched on from the server (PHONE_SIGNIN in .env.functions).
+  const [phoneSignIn, setPhoneSignIn] = useState(false);
+  useEffect(() => {
+    api.config().then((c) => setPhoneSignIn(!!c.phone_signin)).catch(() => {});
+  }, []);
 
   async function signIn() {
     setBusy(true);
@@ -167,11 +173,13 @@ export function Login() {
           ספרו איזה טיפול עשיתם. העוזר יבנה את רשימת המסמכים, ימלא את הטופס ויכין מיילים למרפאה, עד שהתיק מוכן להגשה.
         </p>
         <SignInButton onClick={signIn} busy={busy} />
-        <button className="link phone-signin-link" onClick={() => setPhoneOpen(true)}>
-          📱 או כניסה עם מספר טלפון
-        </button>
+        {phoneSignIn && (
+          <button className="link phone-signin-link" onClick={() => setPhoneOpen(true)}>
+            📱 או כניסה עם מספר טלפון
+          </button>
+        )}
         {error && <p className="error">{error}</p>}
-        <p className="hero-note">בלי סיסמה חדשה: עם חשבון Google או קוד ב-SMS</p>
+        <p className="hero-note">{phoneSignIn ? "בלי סיסמה חדשה: עם חשבון Google או קוד ב-SMS" : "כניסה עם חשבון Google, בלי סיסמה חדשה"}</p>
         <p className="hero-privacy">🔒 המסמכים שלכם נשמרים רק בטלפון שלכם</p>
         <h2 className="examples-title">ככה זה נראה</h2>
         <ClaimExamples />
@@ -264,9 +272,11 @@ export function Login() {
       <section className="landing-section final-cta">
         <h2>יש לכם קבלה שמחכה במגירה?</h2>
         <SignInButton onClick={signIn} busy={busy} />
-        <button className="link phone-signin-link" onClick={() => setPhoneOpen(true)}>
-          📱 או כניסה עם מספר טלפון
-        </button>
+        {phoneSignIn && (
+          <button className="link phone-signin-link" onClick={() => setPhoneOpen(true)}>
+            📱 או כניסה עם מספר טלפון
+          </button>
+        )}
       </section>
 
       <section className="landing-section trial-section">
