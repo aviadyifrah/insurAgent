@@ -409,3 +409,34 @@ button.cta svg { background: #fff; border-radius: 50%; padding: 3px; width: 28px
 .phone-signin-link { display: block; margin: 10px auto 0; font-size: 1rem; }
 .phone-signin label { margin-top: 8px; }
 .phone-signin input[inputmode="numeric"] { font-size: 1.4rem; letter-spacing: 0.3em; text-align: center; }
+
+/* Landing, airier: more space between sections, fewer boxes. */
+.landing-section { padding: 56px 0 0; }
+.landing-section h2 { margin-bottom: 22px; }
+.section-lead { margin: -10px auto 26px !important; }
+.landing-section.privacy { margin-top: 44px; padding: 30px 20px 24px; }
+.final-cta { padding-top: 64px; }
+.landing-footer { margin-top: 56px; }
+
+/* How it works: a plain list, not cards. */
+.steps { gap: 26px; }
+.steps li { background: none; border: none; padding: 0; }
+
+/* Privacy points: lines inside the green band. */
+.privacy-points { gap: 18px; }
+.privacy-point { background: none; padding: 0; }
+
+/* vs. a generic chat: four short items in two columns. */
+.benefits { grid-template-columns: 1fr 1fr; gap: 22px 16px; }
+.benefit { flex-direction: column; gap: 6px; background: none; border: none; padding: 0; }
+.benefit-icon { font-size: 1.7rem; }
+.benefit p { font-size: 0.95rem; }
+
+/* Principles: icon beside the text, no boxes. */
+.principles { gap: 22px; }
+.principle { display: grid; grid-template-columns: auto 1fr; column-gap: 14px; text-align: start; background: none; border: none; padding: 0; }
+.principle-icon { grid-row: span 2; font-size: 1.7rem; margin: 0; }
+.principle h3 { margin: 0 0 2px; }
+
+.supported { gap: 14px; }
+.fits { margin-top: 22px !important; }
