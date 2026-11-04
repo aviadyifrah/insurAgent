@@ -21,7 +21,14 @@ function errorText(err: unknown): string {
   if (code === "auth/code-expired") return "הקוד פג תוקף. אפשר לשלוח קוד חדש.";
   if (code === "auth/too-many-requests" || code === "auth/quota-exceeded") return "יותר מדי ניסיונות. אפשר לנסות שוב מאוחר יותר.";
   if (code === "auth/operation-not-allowed") return "הכניסה עם טלפון עוד לא פעילה. בינתיים אפשר להיכנס עם Google.";
-  return "הכניסה לא הצליחה. אפשר לנסות שוב.";
+  if (code === "auth/unauthorized-domain") return "האתר הזה עוד לא מורשה לכניסה עם טלפון. בינתיים אפשר להיכנס עם Google.";
+  if (code === "auth/invalid-app-credential" || code === "auth/captcha-check-failed")
+    return "בדיקת האבטחה של Google לא עברה. אפשר לרענן את הדף ולנסות שוב.";
+  if (code === "auth/billing-not-enabled") return "שליחת SMS עוד לא הופעלה בחשבון. בינתיים אפשר להיכנס עם Google.";
+  if (code === "auth/missing-phone-number" || code === "auth/invalid-phone-number") return "המספר לא תקין.";
+  console.error("phone sign-in failed", err);
+  // The code helps us tell what went wrong when someone reports it.
+  return `הכניסה לא הצליחה. אפשר לנסות שוב. (קוד: ${code || "לא ידוע"})`;
 }
 
 /** Sign-in with an Israeli mobile number and a one-time SMS code. */
