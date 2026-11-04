@@ -21,6 +21,9 @@ function errorText(err: unknown): string {
   if (code === "auth/code-expired") return "הקוד פג תוקף. אפשר לשלוח קוד חדש.";
   if (code === "auth/too-many-requests" || code === "auth/quota-exceeded") return "יותר מדי ניסיונות. אפשר לנסות שוב מאוחר יותר.";
   if (code === "auth/operation-not-allowed") return "הכניסה עם טלפון עוד לא פעילה. בינתיים אפשר להיכנס עם Google.";
+  // Google's SMS service declined to send (anti-abuse limits or the region); not something the user can fix.
+  if (code.includes("-39") || message.includes("-39"))
+    return "לא הצלחנו לשלוח SMS כרגע. אפשר להיכנס עם Google, או לנסות שוב מאוחר יותר.";
   if (code === "auth/unauthorized-domain") return "האתר הזה עוד לא מורשה לכניסה עם טלפון. בינתיים אפשר להיכנס עם Google.";
   if (code === "auth/invalid-app-credential" || code === "auth/captcha-check-failed")
     return "בדיקת האבטחה של Google לא עברה. אפשר לרענן את הדף ולנסות שוב.";
